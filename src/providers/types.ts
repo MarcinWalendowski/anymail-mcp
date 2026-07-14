@@ -105,6 +105,40 @@ export interface MutationResult {
   [key: string]: unknown;
 }
 
+/** Options common to every query-first bulk operation. */
+export interface BulkOpts {
+  /**
+   * What to match. On Gmail this is X-GM-RAW syntax (e.g. "older_than:1y"); on
+   * generic IMAP a full-text SEARCH. Omit to match the whole mailbox.
+   */
+  query?: string;
+  /** Mailbox to run in. Omit to use the account's whole-mail scope (Gmail: All Mail). */
+  mailbox?: string;
+  /** Preview only: return the matched count + a small sample, changing nothing. */
+  dryRun?: boolean;
+  /** Required to actually run a destructive or large (>100) batch. */
+  confirm?: boolean;
+}
+
+/** Outcome of a bulk operation. Never reports success it didn't achieve. */
+export interface BulkResult {
+  /** The mailbox the operation ran in. */
+  mailbox: string;
+  /** How many messages the query matched. */
+  matched: number;
+  /** How many were actually mutated (0 on dryRun / needsConfirm). */
+  affected: number;
+  dryRun: boolean;
+  /** True when the op stopped to ask for confirm:true (destructive or matched > 100). */
+  needsConfirm?: boolean;
+  /** Human-readable hint (present on needsConfirm, or when nothing matched). */
+  message?: string;
+  /** A few matched messages (newest first) for the caller/agent to eyeball. */
+  sample: MessageSummary[];
+  /** Per-chunk failures — a partial failure never fails the whole op silently. */
+  failed: { uid: number; error: string }[];
+}
+
 export interface MailProvider {
   readonly id: ProviderId;
   readonly email: string;
@@ -135,6 +169,17 @@ export interface MailProvider {
   // delete
   trash(id: string): Promise<MutationResult>;
   delete(id: string): Promise<MutationResult>;
+
+  // bulk (query-first: match a set in one mailbox, act on all of it in one pass)
+  bulkMarkRead(on: boolean, opts: BulkOpts): Promise<BulkResult>;
+  /** Gmail-only (label model). The generic provider throws — use bulkMove instead. */
+  bulkModifyLabels(add: string[], remove: string[], opts: BulkOpts): Promise<BulkResult>;
+  bulkMove(target: string, opts: BulkOpts): Promise<BulkResult>;
+  bulkTrash(opts: BulkOpts): Promise<BulkResult>;
+  /** Permanent. Requires an explicit mailbox; on Gmail only Trash/Spam expunge for real. */
+  bulkDelete(opts: BulkOpts): Promise<BulkResult>;
+  /** Permanently empty the Trash ("trash") or Spam/Junk ("junk") mailbox. */
+  bulkEmpty(which: "trash" | "junk", opts: BulkOpts): Promise<BulkResult>;
 
   // lifecycle (connection pooling / idle sweep, driven by the registry)
   close(): Promise<void>;

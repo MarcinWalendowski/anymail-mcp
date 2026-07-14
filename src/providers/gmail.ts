@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { ImapFlow } from "imapflow";
+import type { FetchQueryObject, ImapFlow, SearchObject } from "imapflow";
 import { simpleParser } from "mailparser";
 import {
+  type FetchMsg,
   ImapProvider,
   MAX_INLINE_ATTACHMENT,
   NotFoundError,
@@ -12,6 +13,8 @@ import {
 } from "./imap.js";
 import type {
   AttachmentResult,
+  BulkOpts,
+  BulkResult,
   ConnectionConfig,
   FullMessage,
   MessageSummary,
@@ -53,14 +56,40 @@ export class GmailProvider extends ImapProvider {
   }
 
   /**
-   * Resolve a Gmail message id (X-GM-MSGID, exposed by ImapFlow as `emailId`) to
-   * a UID in the currently-open mailbox. ImapFlow maps the `emailId` search key
-   * to X-GM-MSGID when the server advertises X-GM-EXT-1 (Gmail does).
+   * Find where a Gmail message actually lives and return the mailbox + UID.
+   * A single X-GM-RAW/emailId SEARCH only returns hits in the *selected* mailbox,
+   * and All Mail excludes Spam & Trash — so we probe All Mail, then Spam, Trash,
+   * and Inbox. This is what lets single-message ops touch Spam/Trash at all.
+   * (ImapFlow maps `emailId` to X-GM-MSGID when the server advertises X-GM-EXT-1.)
    */
-  private async resolveUid(client: ImapFlow, gmMsgId: string): Promise<number | undefined> {
-    const uids = await client.search({ emailId: gmMsgId }, { uid: true });
-    if (uids && uids.length) return uids[uids.length - 1];
-    return undefined;
+  private async resolveAnywhere(id: string): Promise<{ mailbox: string; uid: number } | null> {
+    const client = await this.getClient();
+    const boxes = await this.boxes();
+    const candidates = [boxes.all, boxes.junk, boxes.trash, boxes.inbox].filter(
+      (b): b is string => Boolean(b),
+    );
+    const seen = new Set<string>();
+    for (const box of candidates) {
+      if (seen.has(box)) continue;
+      seen.add(box);
+      const uid = await withMailbox(client, box, async () => {
+        const uids = await client.search({ emailId: id }, { uid: true });
+        return uids && uids.length ? uids[uids.length - 1] : undefined;
+      });
+      if (uid !== undefined) return { mailbox: box, uid };
+    }
+    return null;
+  }
+
+  /** Resolve the id, then run `fn` with the mailbox it lives in already selected. */
+  private async withResolved<T>(
+    id: string,
+    fn: (client: ImapFlow, uid: number, mailbox: string) => Promise<T>,
+  ): Promise<T> {
+    const found = await this.resolveAnywhere(id);
+    if (!found) throw new NotFoundError(id);
+    const client = await this.getClient();
+    return withMailbox(client, found.mailbox, () => fn(client, found.uid, found.mailbox));
   }
 
   // ---------- read ----------
@@ -79,11 +108,7 @@ export class GmailProvider extends ImapProvider {
   }
 
   async getMessage(id: string): Promise<FullMessage> {
-    const client = await this.getClient();
-    const boxes = await this.boxes();
-    return withMailbox(client, this.searchScope(boxes), async () => {
-      const uid = await this.resolveUid(client, id);
-      if (uid === undefined) throw new NotFoundError(id);
+    return this.withResolved(id, async (client, uid) => {
       const msg = await client.fetchOne(String(uid), GMAIL_FULL_QUERY, { uid: true });
       if (!msg) throw new NotFoundError(id);
       const summary = formatSummary(msg);
@@ -114,11 +139,7 @@ export class GmailProvider extends ImapProvider {
   }
 
   async getAttachment(id: string, index: number, savePath?: string): Promise<AttachmentResult> {
-    const client = await this.getClient();
-    const boxes = await this.boxes();
-    return withMailbox(client, this.searchScope(boxes), async () => {
-      const uid = await this.resolveUid(client, id);
-      if (uid === undefined) throw new NotFoundError(id);
+    return this.withResolved(id, async (client, uid) => {
       const msg = await client.fetchOne(String(uid), { uid: true, source: true }, { uid: true });
       if (!msg) throw new NotFoundError(id);
       const parsed = await simpleParser(msg.source as Buffer);
@@ -147,11 +168,7 @@ export class GmailProvider extends ImapProvider {
   // ---------- update (label-based) ----------
 
   async modifyLabels(id: string, add: string[] = [], remove: string[] = []): Promise<MutationResult> {
-    const client = await this.getClient();
-    const boxes = await this.boxes();
-    return withMailbox(client, this.searchScope(boxes), async () => {
-      const uid = await this.resolveUid(client, id);
-      if (uid === undefined) throw new NotFoundError(id);
+    return this.withResolved(id, async (client, uid) => {
       if (add.length) await client.messageFlagsAdd(String(uid), add, { uid: true, useLabels: true });
       if (remove.length) await client.messageFlagsRemove(String(uid), remove, { uid: true, useLabels: true });
       return { gmMsgId: id, added: add, removed: remove };
@@ -159,11 +176,7 @@ export class GmailProvider extends ImapProvider {
   }
 
   private async flagMessage(id: string, flag: string, on: boolean): Promise<MutationResult> {
-    const client = await this.getClient();
-    const boxes = await this.boxes();
-    return withMailbox(client, this.searchScope(boxes), async () => {
-      const uid = await this.resolveUid(client, id);
-      if (uid === undefined) throw new NotFoundError(id);
+    return this.withResolved(id, async (client, uid) => {
       if (on) await client.messageFlagsAdd(String(uid), [flag], { uid: true });
       else await client.messageFlagsRemove(String(uid), [flag], { uid: true });
       return { gmMsgId: id, flag, on };
@@ -192,39 +205,92 @@ export class GmailProvider extends ImapProvider {
   // ---------- delete ----------
 
   async trash(id: string): Promise<MutationResult> {
-    const client = await this.getClient();
-    const boxes = await this.boxes();
-    const trash = this.requireBox(boxes, "trash");
-    return withMailbox(client, this.searchScope(boxes), async () => {
-      const uid = await this.resolveUid(client, id);
-      if (uid === undefined) throw new NotFoundError(id);
+    const trash = this.requireBox(await this.boxes(), "trash");
+    return this.withResolved(id, async (client, uid, mailbox) => {
+      if (mailbox === trash) return { gmMsgId: id, trashed: true }; // already in Trash
       await client.messageMove(String(uid), trash, { uid: true });
       return { gmMsgId: id, trashed: true };
     });
   }
 
   /**
-   * Permanent delete: ensure the message is in Trash, then EXPUNGE it there.
-   * Gmail only honors a real delete from within the Trash mailbox; a \Deleted +
-   * EXPUNGE anywhere else just removes that one label.
+   * Permanent delete. Gmail only truly deletes on EXPUNGE from within Trash or
+   * Spam; a \Deleted + EXPUNGE anywhere else just removes a label. So: if the
+   * message already lives in Trash/Spam, expunge it there; otherwise move it into
+   * Trash and expunge from there. Never reports success without an actual expunge.
    */
   async delete(id: string): Promise<MutationResult> {
-    const client = await this.getClient();
     const boxes = await this.boxes();
     const trash = this.requireBox(boxes, "trash");
+    const spam = boxes.junk;
 
-    // Step 1: move into Trash if it's still elsewhere.
-    await withMailbox(client, this.searchScope(boxes), async () => {
-      const uid = await this.resolveUid(client, id);
-      if (uid !== undefined) await client.messageMove(String(uid), trash, { uid: true });
+    const found = await this.resolveAnywhere(id);
+    if (!found) throw new NotFoundError(id);
+    const client = await this.getClient();
+
+    // Already in a mailbox where EXPUNGE is permanent → delete in place.
+    if (found.mailbox === trash || (spam && found.mailbox === spam)) {
+      return withMailbox(client, found.mailbox, async () => {
+        await client.messageDelete(String(found.uid), { uid: true });
+        return { gmMsgId: id, deleted: true, from: found.mailbox };
+      });
+    }
+
+    // Elsewhere: move into Trash, then re-locate and EXPUNGE it there.
+    await withMailbox(client, found.mailbox, async () => {
+      await client.messageMove(String(found.uid), trash, { uid: true });
     });
-
-    // Step 2: permanently remove it from Trash.
     return withMailbox(client, trash, async () => {
-      const uid = await this.resolveUid(client, id);
-      if (uid === undefined) return { gmMsgId: id, deleted: true }; // already gone
+      const uids = await client.search({ emailId: id }, { uid: true });
+      const uid = uids && uids.length ? uids[uids.length - 1] : undefined;
+      if (uid === undefined) {
+        throw new Error(
+          `Delete incomplete: ${id} was moved to Trash but could not be re-located to expunge. Re-run delete, or use empty_trash.`,
+        );
+      }
       await client.messageDelete(String(uid), { uid: true });
       return { gmMsgId: id, deleted: true };
     });
+  }
+
+  // ---------- bulk (Gmail overrides) ----------
+
+  protected readonly summaryQuery: FetchQueryObject = GMAIL_SUMMARY_QUERY;
+
+  /** Gmail native search. Empty query = the whole selected mailbox. */
+  protected searchCriteria(query?: string): SearchObject {
+    return query && query.trim() ? { gmraw: query } : { all: true };
+  }
+
+  /** Gmail messages carry a stable X-GM-MSGID (emailId); no composite id needed. */
+  protected formatFetched(msg: FetchMsg): MessageSummary {
+    return formatSummary(msg);
+  }
+
+  bulkModifyLabels(add: string[], remove: string[], opts: BulkOpts): Promise<BulkResult> {
+    return this.runBulk({ kind: "flags", add, remove, useLabels: true }, opts);
+  }
+
+  /** Gmail move = apply the label and drop \Inbox (mirrors single-message move()). */
+  bulkMove(target: string, opts: BulkOpts): Promise<BulkResult> {
+    return this.runBulk({ kind: "flags", add: [target], remove: ["\\Inbox"], useLabels: true }, opts);
+  }
+
+  async bulkDelete(opts: BulkOpts): Promise<BulkResult> {
+    const boxes = await this.boxes();
+    const trash = this.requireBox(boxes, "trash");
+    const { mailbox } = opts;
+    if (!mailbox) {
+      throw new Error(
+        "bulkDelete requires an explicit mailbox. Use empty_trash / empty_spam, or bulk_trash then empty_trash.",
+      );
+    }
+    if (mailbox !== trash && !(boxes.junk && mailbox === boxes.junk)) {
+      throw new Error(
+        `On Gmail, permanent delete only works inside Trash or Spam (EXPUNGE elsewhere just removes a label). ` +
+          `To permanently delete matches in "${mailbox}": bulk_trash them, then empty_trash.`,
+      );
+    }
+    return this.runBulk({ kind: "delete" }, opts, true);
   }
 }

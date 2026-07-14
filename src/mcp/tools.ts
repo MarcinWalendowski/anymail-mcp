@@ -4,7 +4,7 @@ import { ok, fail } from "./result.js";
 import { assertWritable, loadAccounts, resolveEmail } from "../registry.js";
 import { hasAppPassword } from "../keychain.js";
 import { getProvider } from "../providers/index.js";
-import type { ComposeInput, MailProvider } from "../providers/types.js";
+import type { BulkOpts, ComposeInput, MailProvider } from "../providers/types.js";
 
 const account = z
   .string()
@@ -38,8 +38,32 @@ const composeShape = {
     .optional(),
 };
 
+// Shared input for the query-first bulk tools.
+const bulkShape = {
+  account,
+  query: z
+    .string()
+    .optional()
+    .describe(
+      "What to match. On Gmail this is native search syntax (e.g. 'older_than:1y is:unread'); on other providers a text match. Omit to match the whole mailbox.",
+    ),
+  mailbox: z
+    .string()
+    .optional()
+    .describe("Mailbox/label to run in (e.g. '[Gmail]/Spam'). Omit for the account's whole-mail scope (Gmail: All Mail)."),
+  dryRun: z.boolean().optional().describe("Preview only: return the matched count + a small sample, changing nothing."),
+  confirm: z.boolean().optional().describe("Required to actually run a destructive or large (>100) batch."),
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Args = Record<string, any>;
+
+const bulkOpts = (a: Args): BulkOpts => ({
+  query: a.query,
+  mailbox: a.mailbox,
+  dryRun: a.dryRun,
+  confirm: a.confirm,
+});
 
 function reg(
   server: McpServer,
@@ -290,6 +314,130 @@ export function registerTools(server: McpServer): void {
       const email = resolveEmail(a.account);
       assertWritable(email);
       return getProvider(email).delete(a.gmMsgId);
+    },
+  );
+
+  // ---------- bulk (query-first) ----------
+  reg(
+    server,
+    "mark_all_read",
+    {
+      title: "Mark all matching read",
+      description:
+        "Mark every message matching a query as read in one pass — e.g. {query:'is:unread', mailbox:'[Gmail]/Spam'}. Reaches Spam/Trash via the mailbox param. Use dryRun:true to preview the count; confirm:true for batches over 100.",
+      inputSchema: bulkShape,
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return getProvider(email).bulkMarkRead(true, bulkOpts(a));
+    },
+  );
+
+  reg(
+    server,
+    "bulk_modify_labels",
+    {
+      title: "Bulk modify labels",
+      description:
+        "Add and/or remove labels on every message matching a query (Gmail only). Provide add and/or remove. dryRun:true previews; confirm:true runs batches over 100.",
+      inputSchema: {
+        ...bulkShape,
+        add: z.array(z.string()).optional().describe("Labels to add."),
+        remove: z.array(z.string()).optional().describe("Labels to remove."),
+      },
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return getProvider(email).bulkModifyLabels(a.add ?? [], a.remove ?? [], bulkOpts(a));
+    },
+  );
+
+  reg(
+    server,
+    "bulk_move",
+    {
+      title: "Bulk move",
+      description:
+        "File every message matching a query under a target label (Gmail: adds the label and removes it from the Inbox; other providers: moves to the folder).",
+      inputSchema: { ...bulkShape, targetLabel: z.string().describe("Label/folder to file matches under.") },
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return getProvider(email).bulkMove(a.targetLabel, bulkOpts(a));
+    },
+  );
+
+  reg(
+    server,
+    "bulk_trash",
+    {
+      title: "Bulk trash",
+      description:
+        "Move every message matching a query to Trash (reversible ~30 days). Requires a query or mailbox. dryRun:true previews; confirm:true runs batches over 100.",
+      inputSchema: bulkShape,
+      annotations: { destructiveHint: true },
+    },
+    async (a) => {
+      if (!a.query && !a.mailbox) {
+        throw new Error("bulk_trash needs a query or mailbox — refusing to trash the whole account by default.");
+      }
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return getProvider(email).bulkTrash(bulkOpts(a));
+    },
+  );
+
+  reg(
+    server,
+    "bulk_delete",
+    {
+      title: "Bulk permanent delete",
+      description:
+        "PERMANENTLY delete every message matching a query in an explicit mailbox. On Gmail this only works inside Trash or Spam (use empty_trash / empty_spam, or bulk_trash then empty_trash). Irreversible; requires confirm:true (dryRun:true to preview).",
+      inputSchema: bulkShape,
+      annotations: { destructiveHint: true },
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return getProvider(email).bulkDelete(bulkOpts(a));
+    },
+  );
+
+  reg(
+    server,
+    "empty_spam",
+    {
+      title: "Empty Spam",
+      description:
+        "PERMANENTLY delete everything in the Spam/Junk mailbox (optionally narrowed by query). Irreversible; requires confirm:true. Use dryRun:true to see the count first.",
+      inputSchema: bulkShape,
+      annotations: { destructiveHint: true },
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return getProvider(email).bulkEmpty("junk", bulkOpts(a));
+    },
+  );
+
+  reg(
+    server,
+    "empty_trash",
+    {
+      title: "Empty Trash",
+      description:
+        "PERMANENTLY delete everything in the Trash mailbox (optionally narrowed by query). Irreversible; requires confirm:true. Use dryRun:true to see the count first.",
+      inputSchema: bulkShape,
+      annotations: { destructiveHint: true },
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return getProvider(email).bulkEmpty("trash", bulkOpts(a));
     },
   );
 }

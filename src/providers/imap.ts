@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { ImapFlow } from "imapflow";
+import { ImapFlow, type FetchQueryObject, type SearchObject } from "imapflow";
 import nodemailer, { type Transporter } from "nodemailer";
 import { simpleParser } from "mailparser";
 import { getAppPassword } from "../keychain.js";
@@ -8,6 +8,8 @@ import { logger } from "../logger.js";
 import type {
   AttachmentInput,
   AttachmentResult,
+  BulkOpts,
+  BulkResult,
   ComposeInput,
   ConnectionConfig,
   Folder,
@@ -90,6 +92,48 @@ export function formatSummary(msg: FetchMsg): MessageSummary {
 
 export function byDateDesc(a: MessageSummary, b: MessageSummary): number {
   return (b.date ?? "").localeCompare(a.date ?? "");
+}
+
+// ---------- bulk helpers ----------
+
+/** A batch requiring confirm:true once it would touch more than this many messages. */
+export const BULK_CONFIRM_OVER = 100;
+/** Max UIDs per IMAP command — bounds command-line length even for scattered ids. */
+const BULK_CHUNK = 500;
+/** How many matched messages to include as a preview sample. */
+const BULK_SAMPLE = 10;
+
+/** The mutation a bulk op applies to a UID set. */
+export type BulkAction =
+  | { kind: "flags"; add?: string[]; remove?: string[]; useLabels?: boolean }
+  | { kind: "move"; target: string }
+  | { kind: "delete" };
+
+/** Split a UID list into fixed-size chunks (sorted ascending). */
+export function chunkUids(uids: number[], size = BULK_CHUNK): number[][] {
+  const sorted = [...uids].sort((a, b) => a - b);
+  const out: number[][] = [];
+  for (let i = 0; i < sorted.length; i += size) out.push(sorted.slice(i, i + size));
+  return out;
+}
+
+/** Compact a sorted UID chunk into an IMAP sequence set ("12,15:20,30") to keep commands short. */
+export function toRange(uids: number[]): string {
+  if (uids.length === 0) return "";
+  const parts: string[] = [];
+  let start = uids[0];
+  let prev = uids[0];
+  for (let i = 1; i < uids.length; i++) {
+    const u = uids[i];
+    if (u === prev + 1) {
+      prev = u;
+      continue;
+    }
+    parts.push(start === prev ? `${start}` : `${start}:${prev}`);
+    start = prev = u;
+  }
+  parts.push(start === prev ? `${start}` : `${start}:${prev}`);
+  return parts.join(",");
 }
 
 export class NotFoundError extends Error {
@@ -484,5 +528,122 @@ export class ImapProvider implements MailProvider {
       await client.messageDelete(String(uid), { uid: true });
       return { gmMsgId: id, deleted: true };
     });
+  }
+
+  // ----- bulk (query-first) -----
+
+  /** Fetch fields used to build the preview sample. Gmail overrides to include X-GM ids. */
+  protected readonly summaryQuery: FetchQueryObject = BASE_SUMMARY_QUERY;
+
+  /** IMAP SEARCH criteria for a query. Gmail overrides with { gmraw }. Empty = whole mailbox. */
+  protected searchCriteria(query?: string): SearchObject {
+    return query && query.trim() ? { text: query.trim() } : { all: true };
+  }
+
+  /** Turn a fetched message into a summary with a usable id. Gmail overrides (X-GM-MSGID). */
+  protected formatFetched(msg: FetchMsg, scope: string, uidValidity: bigint | number | string): MessageSummary {
+    const s = formatSummary(msg);
+    s.gmMsgId = this.makeId(scope, uidValidity, msg.uid);
+    return s;
+  }
+
+  /** Apply one action to a UID sequence set within the currently-open mailbox. */
+  protected async applyAction(client: ImapFlow, range: string, action: BulkAction): Promise<void> {
+    switch (action.kind) {
+      case "flags":
+        if (action.add && action.add.length)
+          await client.messageFlagsAdd(range, action.add, { uid: true, useLabels: action.useLabels });
+        if (action.remove && action.remove.length)
+          await client.messageFlagsRemove(range, action.remove, { uid: true, useLabels: action.useLabels });
+        break;
+      case "move":
+        await client.messageMove(range, action.target, { uid: true });
+        break;
+      case "delete":
+        await client.messageDelete(range, { uid: true });
+        break;
+    }
+  }
+
+  /**
+   * The shared batch engine: open one mailbox, SEARCH the whole matching set (no
+   * truncation), then either preview (dryRun / needsConfirm) or act on every match
+   * in chunked IMAP commands. UIDs are captured up-front, so moves/deletes on one
+   * chunk never disturb a later chunk's ids. Partial failures are reported, not hidden.
+   */
+  protected async runBulk(action: BulkAction, opts: BulkOpts, requireConfirm = false): Promise<BulkResult> {
+    const client = await this.getClient();
+    const boxes = await this.boxes();
+    const mailbox = opts.mailbox ?? this.searchScope(boxes);
+    return withMailbox(client, mailbox, async () => {
+      const uidValidity = client.mailbox ? client.mailbox.uidValidity : 0;
+      const uids = (await client.search(this.searchCriteria(opts.query), { uid: true })) || [];
+      const matched = uids.length;
+
+      if (matched === 0) {
+        return { mailbox, matched: 0, affected: 0, dryRun: Boolean(opts.dryRun), sample: [], failed: [], message: "Nothing matched." };
+      }
+
+      const sampleMsgs = await client.fetchAll(toRange(uids.slice(-BULK_SAMPLE)), this.summaryQuery, { uid: true });
+      const sample = sampleMsgs.map((m) => this.formatFetched(m, mailbox, uidValidity)).sort(byDateDesc);
+
+      if (opts.dryRun) {
+        return { mailbox, matched, affected: 0, dryRun: true, sample, failed: [] };
+      }
+      if ((requireConfirm || matched > BULK_CONFIRM_OVER) && opts.confirm !== true) {
+        return {
+          mailbox,
+          matched,
+          affected: 0,
+          dryRun: false,
+          needsConfirm: true,
+          message: `${matched} message(s) matched in ${mailbox}. Re-run with confirm:true to proceed, or dryRun:true to preview.`,
+          sample,
+          failed: [],
+        };
+      }
+
+      const failed: { uid: number; error: string }[] = [];
+      let affected = 0;
+      for (const chunk of chunkUids(uids)) {
+        try {
+          await this.applyAction(client, toRange(chunk), action);
+          affected += chunk.length;
+        } catch (e) {
+          const error = e instanceof Error ? e.message : String(e);
+          for (const uid of chunk) failed.push({ uid, error });
+        }
+      }
+      return { mailbox, matched, affected, dryRun: false, sample, failed };
+    });
+  }
+
+  bulkMarkRead(on: boolean, opts: BulkOpts): Promise<BulkResult> {
+    return this.runBulk({ kind: "flags", add: on ? ["\\Seen"] : undefined, remove: on ? undefined : ["\\Seen"] }, opts);
+  }
+
+  bulkModifyLabels(_add: string[], _remove: string[], _opts: BulkOpts): Promise<BulkResult> {
+    throw new Error("This provider is folder-based (no labels). Use bulkMove to relocate messages.");
+  }
+
+  bulkMove(target: string, opts: BulkOpts): Promise<BulkResult> {
+    return this.runBulk({ kind: "move", target }, opts);
+  }
+
+  async bulkTrash(opts: BulkOpts): Promise<BulkResult> {
+    const trash = this.requireBox(await this.boxes(), "trash");
+    return this.runBulk({ kind: "move", target: trash }, opts);
+  }
+
+  async bulkDelete(opts: BulkOpts): Promise<BulkResult> {
+    if (!opts.mailbox) {
+      throw new Error("bulkDelete requires an explicit mailbox — refusing to permanently delete without one.");
+    }
+    return this.runBulk({ kind: "delete" }, opts, true);
+  }
+
+  async bulkEmpty(which: "trash" | "junk", opts: BulkOpts): Promise<BulkResult> {
+    const mailbox = this.requireBox(await this.boxes(), which);
+    return this.runBulk({ kind: "delete" }, { ...opts, mailbox }, true);
   }
 }

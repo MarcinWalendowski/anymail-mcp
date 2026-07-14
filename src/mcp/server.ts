@@ -10,11 +10,12 @@ const INSTRUCTIONS = [
   "Message ids (gmMsgId) and thread ids (gmThrId) are opaque strings returned by search_messages / get_message — pass them back verbatim, never construct them.",
   "On Gmail: search uses native Gmail query syntax (add 'in:anywhere' for Trash/Spam) and messages carry labels. On other providers: search is a limited server-side text match, there are no labels (use move/archive instead of modify_labels), and get_thread is unavailable.",
   "Use trash_message for a reversible delete; delete_message is permanent and needs confirm:true.",
+  "For whole-sets of mail, prefer the query-first bulk tools (mark_all_read, bulk_modify_labels, bulk_move, bulk_trash, bulk_delete, empty_spam, empty_trash) instead of looping single-message tools. Pass {query?, mailbox?}; call with dryRun:true first to see the matched count + sample, then confirm:true to run (required for destructive or >100-message batches). Target Spam/Trash with the mailbox param (e.g. '[Gmail]/Spam').",
 ].join(" ");
 
 /** Build a fully-registered MCP server. Shared by the stdio and HTTP transports. */
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: "anymail-mcp", version: "0.1.0" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "anymail-mcp", version: "0.2.0" }, { instructions: INSTRUCTIONS });
   registerTools(server);
   return server;
 }

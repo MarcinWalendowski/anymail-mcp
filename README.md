@@ -10,7 +10,7 @@ hosted, and your credentials never leave your Mac.
 
 ![platform: macOS](https://img.shields.io/badge/platform-macOS%2013%2B-black)
 ![license: MIT](https://img.shields.io/badge/license-MIT-blue)
-![status: v0.1.0](https://img.shields.io/badge/status-v0.1.0%20%C2%B7%20Gmail-orange)
+![status: v0.2.0](https://img.shields.io/badge/status-v0.2.0%20%C2%B7%20Gmail-orange)
 
 ---
 
@@ -26,7 +26,8 @@ can search, triage, draft, send, label, and clean up across **all of them** in a
 single session — while every credential stays on your machine.
 
 > Multi-provider support (Microsoft 365 / Outlook, generic IMAP, iCloud) and
-> OAuth sign-in are on the [roadmap](#roadmap). v0.1.0 is Gmail + App Passwords.
+> OAuth sign-in are on the [roadmap](#roadmap). v0.2.0 is Gmail + App Passwords
+> (generic IMAP providers are included but experimental).
 
 ## What it can do
 
