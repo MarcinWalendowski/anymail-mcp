@@ -6,10 +6,21 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Provider abstraction** — a `MailProvider` interface with Gmail behind it, plus a
+  generic IMAP/SMTP provider for iCloud, Fastmail, or any host (`--provider icloud|fastmail|imap`).
+  One agent can now span multiple providers. Non-Gmail search and threading are limited
+  (experimental); Gmail behavior is unchanged.
+- `DISTRIBUTION.md` + `scripts/make-dmg.sh` + a branded DMG background — the spec and
+  tooling for shipping a notarized website download and the CLI channels (no App Store).
+
+### Changed
+- Account registry gains a `provider` field (defaults to `gmail`; existing accounts unaffected).
+
 ### Planned
-- Multiple providers (Microsoft 365 / Outlook, generic IMAP, iCloud, Yahoo).
 - OAuth sign-in as an alternative to App Passwords.
-- Signed & notarized DMG + Homebrew cask for one-click install.
+- Microsoft 365 / Outlook provider (needs OAuth — basic-auth IMAP is being retired).
+- Self-contained engine (bundled/compiled Node) + signed & notarized DMG + Homebrew.
 - `npm`/`npx` distribution for the CLI/engine.
 
 ## [0.1.0] - 2026-07-14

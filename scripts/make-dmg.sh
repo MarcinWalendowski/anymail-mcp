@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#
+# Build a branded, notarizable DMG for AnyMail MCP.
+#
+#   Prereqs:  brew install create-dmg librsvg
+#   Usage:    scripts/make-dmg.sh "path/to/AnyMail MCP.app" [output.dmg]
+#   Signing:  DEVELOPER_ID="Developer ID Application: NAME (TEAMID)" scripts/make-dmg.sh ...
+#
+# After this produces the DMG, notarize + staple it (see DISTRIBUTION.md step 2).
+set -euo pipefail
+
+APP="${1:?Usage: make-dmg.sh <AnyMail MCP.app> [out.dmg]}"
+OUT="${2:-AnyMail MCP.dmg}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SVG="$ROOT/assets/dmg-background.svg"
+
+command -v create-dmg >/dev/null || { echo "Install create-dmg:  brew install create-dmg"; exit 1; }
+[ -d "$APP" ] || { echo "Not an .app bundle: $APP"; exit 1; }
+
+APP_NAME="$(basename "$APP")"
+BG_DIR="$(mktemp -d)"
+BG=""
+
+# Rasterize the SVG background to @1x + @2x (create-dmg auto-selects the retina one).
+if command -v rsvg-convert >/dev/null; then
+  BG="$BG_DIR/background.png"
+  rsvg-convert -w 600  -h 400 "$SVG" -o "$BG"
+  rsvg-convert -w 1200 -h 800 "$SVG" -o "$BG_DIR/background@2x.png"
+else
+  echo "note: rsvg-convert not found (brew install librsvg) — building a plain DMG background."
+fi
+
+rm -f "$OUT"
+
+ARGS=(
+  --volname "AnyMail MCP"
+  --window-pos 200 120
+  --window-size 600 400
+  --icon-size 112
+  --icon "$APP_NAME" 150 190
+  --app-drop-link 450 190
+  --hide-extension "$APP_NAME"
+  --no-internet-enable
+)
+[ -n "$BG" ] && ARGS+=( --background "$BG" )
+
+ICNS="$APP/Contents/Resources/AppIcon.icns"
+[ -f "$ICNS" ] && ARGS+=( --volicon "$ICNS" )
+
+# Optionally codesign the DMG itself (the .app should already be signed).
+[ -n "${DEVELOPER_ID:-}" ] && ARGS+=( --codesign "$DEVELOPER_ID" )
+
+create-dmg "${ARGS[@]}" "$OUT" "$APP"
+
+echo "→ $OUT"
+echo "Next: xcrun notarytool submit \"$OUT\" --wait  &&  xcrun stapler staple \"$OUT\"  (see DISTRIBUTION.md)."

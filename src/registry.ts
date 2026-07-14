@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { ConnectionConfig, ProviderId } from "./providers/types.js";
 
 // Non-secret account metadata. The App Password itself lives in the macOS
 // Keychain (see keychain.ts), never in this file.
@@ -15,6 +16,10 @@ export interface Account {
   default?: boolean;
   /** When true, every write/destructive operation is refused for this account. */
   readOnly?: boolean;
+  /** Mail provider. Defaults to "gmail" when omitted (back-compat with older registries). */
+  provider?: ProviderId;
+  /** Custom IMAP/SMTP endpoints — only for provider "imap"; presets cover the rest. */
+  connection?: ConnectionConfig;
 }
 
 export function loadAccounts(): Account[] {
@@ -54,7 +59,7 @@ export function resolveEmail(email?: string): string {
   if (email) return getAccount(email).email;
   const fallback = accounts.find((a) => a.default) ?? accounts[0];
   if (!fallback) {
-    throw new Error("No Gmail accounts configured. Run: anymail-mcp add <email>");
+    throw new Error("No accounts configured. Run: anymail-mcp add <email>");
   }
   return fallback.email;
 }

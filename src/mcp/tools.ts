@@ -3,8 +3,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ok, fail } from "./result.js";
 import { assertWritable, loadAccounts, resolveEmail } from "../registry.js";
 import { hasAppPassword } from "../keychain.js";
-import * as imap from "../gmail/imap.js";
-import * as smtp from "../gmail/smtp.js";
+import { getProvider } from "../providers/index.js";
+import type { ComposeInput, MailProvider } from "../providers/types.js";
 
 const account = z
   .string()
@@ -73,6 +73,7 @@ export function registerTools(server: McpServer): void {
       loadAccounts().map((acc) => ({
         email: acc.email,
         displayName: acc.displayName ?? null,
+        provider: acc.provider ?? "gmail",
         default: Boolean(acc.default),
         readOnly: Boolean(acc.readOnly),
         credentialPresent: hasAppPassword(acc.email),
@@ -94,7 +95,7 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: true },
     },
-    async (a) => imap.searchMessages(resolveEmail(a.account), a.query, a.limit ?? 25, a.label),
+    async (a) => getProvider(resolveEmail(a.account)).search(a.query, a.limit ?? 25, a.label),
   );
 
   reg(
@@ -107,7 +108,7 @@ export function registerTools(server: McpServer): void {
       inputSchema: { account, gmMsgId },
       annotations: { readOnlyHint: true },
     },
-    async (a) => imap.getMessage(resolveEmail(a.account), a.gmMsgId),
+    async (a) => getProvider(resolveEmail(a.account)).getMessage(a.gmMsgId),
   );
 
   reg(
@@ -122,7 +123,7 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: true },
     },
-    async (a) => imap.getThread(resolveEmail(a.account), a.gmThrId),
+    async (a) => getProvider(resolveEmail(a.account)).getThread(a.gmThrId),
   );
 
   reg(
@@ -134,7 +135,7 @@ export function registerTools(server: McpServer): void {
       inputSchema: { account },
       annotations: { readOnlyHint: true },
     },
-    async (a) => imap.listLabels(resolveEmail(a.account)),
+    async (a) => getProvider(resolveEmail(a.account)).listFolders(),
   );
 
   reg(
@@ -152,7 +153,7 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: true },
     },
-    async (a) => imap.getAttachment(resolveEmail(a.account), a.gmMsgId, a.index, a.savePath),
+    async (a) => getProvider(resolveEmail(a.account)).getAttachment(a.gmMsgId, a.index, a.savePath),
   );
 
   // ---------- create ----------
@@ -169,7 +170,7 @@ export function registerTools(server: McpServer): void {
     async (a) => {
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return smtp.sendMessage(email, a as unknown as smtp.ComposeInput);
+      return getProvider(email).send(a as unknown as ComposeInput);
     },
   );
 
@@ -184,7 +185,7 @@ export function registerTools(server: McpServer): void {
     async (a) => {
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return smtp.createDraft(email, a as unknown as smtp.ComposeInput);
+      return getProvider(email).createDraft(a as unknown as ComposeInput);
     },
   );
 
@@ -199,7 +200,7 @@ export function registerTools(server: McpServer): void {
     async (a) => {
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return imap.createLabel(email, a.name);
+      return getProvider(email).createFolder(a.name);
     },
   );
 
@@ -221,7 +222,7 @@ export function registerTools(server: McpServer): void {
     async (a) => {
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return imap.modifyLabels(email, a.gmMsgId, a.add ?? [], a.remove ?? []);
+      return getProvider(email).modifyLabels(a.gmMsgId, a.add ?? [], a.remove ?? []);
     },
   );
 
@@ -229,25 +230,25 @@ export function registerTools(server: McpServer): void {
     name: string,
     title: string,
     description: string,
-    op: (email: string, id: string) => Promise<unknown>,
+    op: (provider: MailProvider, id: string) => Promise<unknown>,
     annotations: Record<string, boolean> = {},
   ) =>
     reg(server, name, { title, description, inputSchema: { account, gmMsgId }, annotations }, async (a) => {
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return op(email, a.gmMsgId);
+      return op(getProvider(email), a.gmMsgId);
     });
 
-  simpleWrite("mark_read", "Mark read", "Mark a message as read (\\Seen).", imap.markRead);
-  simpleWrite("mark_unread", "Mark unread", "Mark a message as unread.", imap.markUnread);
-  simpleWrite("star", "Star", "Star a message.", imap.star);
-  simpleWrite("unstar", "Unstar", "Remove the star from a message.", imap.unstar);
-  simpleWrite("archive", "Archive", "Archive a message (remove it from the Inbox).", imap.archive);
+  simpleWrite("mark_read", "Mark read", "Mark a message as read (\\Seen).", (p, id) => p.markRead(id, true));
+  simpleWrite("mark_unread", "Mark unread", "Mark a message as unread.", (p, id) => p.markRead(id, false));
+  simpleWrite("star", "Star", "Star a message.", (p, id) => p.star(id, true));
+  simpleWrite("unstar", "Unstar", "Remove the star from a message.", (p, id) => p.star(id, false));
+  simpleWrite("archive", "Archive", "Archive a message (remove it from the Inbox).", (p, id) => p.archive(id));
   simpleWrite(
     "trash_message",
     "Trash message",
     "Move a message to Trash (reversible for ~30 days).",
-    imap.trashMessage,
+    (p, id) => p.trash(id),
     { destructiveHint: true },
   );
 
@@ -262,7 +263,7 @@ export function registerTools(server: McpServer): void {
     async (a) => {
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return imap.moveMessage(email, a.gmMsgId, a.targetLabel);
+      return getProvider(email).move(a.gmMsgId, a.targetLabel);
     },
   );
 
@@ -288,7 +289,7 @@ export function registerTools(server: McpServer): void {
       }
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return imap.deleteMessage(email, a.gmMsgId);
+      return getProvider(email).delete(a.gmMsgId);
     },
   );
 }

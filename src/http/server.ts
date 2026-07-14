@@ -12,7 +12,7 @@ import {
 } from "../accounts.js";
 import { runInstall } from "../install.js";
 import { DEFAULT_PORT, ensureServerConfig, type ServerConfig } from "../server-config.js";
-import { closeAll, startIdleSweep } from "../gmail/pool.js";
+import { closeAll, startIdleSweep } from "../providers/index.js";
 import { logger } from "../logger.js";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);

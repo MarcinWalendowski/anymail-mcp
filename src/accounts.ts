@@ -1,8 +1,4 @@
-import {
-  deleteAppPassword,
-  hasAppPassword,
-  setAppPassword,
-} from "./keychain.js";
+import { deleteAppPassword, hasAppPassword, setAppPassword } from "./keychain.js";
 import {
   type Account,
   getAccount,
@@ -10,9 +6,8 @@ import {
   removeAccount as removeFromRegistry,
   upsertAccount,
 } from "./registry.js";
-import { getImap } from "./gmail/pool.js";
-import { getSpecialMailboxes, type SpecialMailboxes } from "./gmail/mailboxes.js";
-import { dropTransport, verifySmtp } from "./gmail/smtp.js";
+import { buildProvider, dropProvider, getProvider, resolveConnection } from "./providers/index.js";
+import type { ConnectionConfig, ProviderId, SpecialMailboxes } from "./providers/types.js";
 
 // Single source of truth for account management, shared by the CLI and the HTTP
 // admin API. Never returns or logs the App Password.
@@ -20,6 +15,7 @@ import { dropTransport, verifySmtp } from "./gmail/smtp.js";
 export interface PublicAccount {
   email: string;
   displayName: string | null;
+  provider: ProviderId;
   default: boolean;
   readOnly: boolean;
   credentialPresent: boolean;
@@ -31,12 +27,17 @@ export interface AddAccountInput {
   displayName?: string;
   default?: boolean;
   readOnly?: boolean;
+  /** Defaults to "gmail". */
+  provider?: ProviderId;
+  /** Required only for provider "imap" (custom host). Presets cover the rest. */
+  connection?: ConnectionConfig;
 }
 
 function toPublic(a: Account): PublicAccount {
   return {
     email: a.email,
     displayName: a.displayName ?? null,
+    provider: a.provider ?? "gmail",
     default: Boolean(a.default),
     readOnly: Boolean(a.readOnly),
     credentialPresent: hasAppPassword(a.email),
@@ -61,37 +62,40 @@ export async function addAccount(input: AddAccountInput): Promise<PublicAccount>
   if (!email) throw new Error("email is required");
   if (!pass) throw new Error("appPassword is required");
 
+  const providerId = input.provider ?? "gmail";
+  const conn = resolveConnection(providerId, input.connection);
+
   setAppPassword(email, pass);
+  const probe = buildProvider(email, providerId, conn);
   try {
-    const client = await getImap(email);
-    await getSpecialMailboxes(client, email);
-    await verifySmtp(email);
+    await probe.verify(); // IMAP login + special-mailbox discovery + SMTP login
   } catch (e) {
     deleteAppPassword(email);
-    dropTransport(email);
+    await probe.close();
     throw new Error(`Login failed for ${email}: ${errMsg(e)}. App Password was not saved.`);
   }
+  await probe.close();
 
   const account: Account = {
     email,
     displayName: input.displayName,
     default: input.default,
     readOnly: input.readOnly,
+    provider: providerId,
+    connection: providerId === "imap" ? conn : undefined,
   };
   upsertAccount(account);
   return toPublic(account);
 }
 
 export async function testAccount(email: string): Promise<{ ok: true; mailboxes: SpecialMailboxes }> {
-  const client = await getImap(email);
-  const mailboxes = await getSpecialMailboxes(client, email);
-  await verifySmtp(email);
+  const mailboxes = await getProvider(email).verify();
   return { ok: true, mailboxes };
 }
 
 export function removeAccount(email: string): void {
   deleteAppPassword(email);
-  dropTransport(email);
+  dropProvider(email);
   removeFromRegistry(email);
 }
 

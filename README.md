@@ -76,6 +76,11 @@ node dist/index.js add archive@gmail.com --read-only   # triage-only: refuses al
 node dist/index.js list
 node dist/index.js test you@gmail.com                  # verify IMAP + SMTP
 
+# other providers (experimental — folder-based, limited search, no threads):
+node dist/index.js add you@icloud.com   --provider icloud
+node dist/index.js add you@fastmail.com --provider fastmail
+node dist/index.js add you@host.tld     --provider imap --imap-host imap.host.tld --smtp-host smtp.host.tld
+
 # register into every agent it can detect
 node dist/index.js install
 ```
@@ -91,8 +96,9 @@ gives you an **Add Account** window, an **Install into Agents** button, and
 
 The source and build steps live in [`app/`](app/BUILD.md). **Today you build it
 yourself** (`xcodegen generate` + Xcode). A signed, notarized download that opens
-with a double-click is on the [roadmap](#roadmap) — that step needs an Apple
-Developer account to notarize, so it can't be produced here.
+with a double-click is on the [roadmap](#roadmap) — the full plan (self-contained
+engine, DMG, notarization, CLI channels) is in [DISTRIBUTION.md](DISTRIBUTION.md);
+notarizing needs an Apple Developer account, so it can't be produced here.
 
 ---
 
@@ -130,8 +136,10 @@ Keychain.
 
 ## Roadmap
 
-- [ ] **More providers** — Microsoft 365 / Outlook, generic IMAP, iCloud, Yahoo,
-      so one agent spans every mailbox regardless of host.
+- [x] **Generic IMAP providers** — iCloud, Fastmail, and any IMAP host now work via
+      `--provider` (experimental: folder-based, limited search, no threads).
+- [ ] **More providers** — Microsoft 365 / Outlook (needs OAuth), Yahoo, so one agent
+      spans every mailbox regardless of host.
 - [ ] **OAuth sign-in** — connect an account with a normal "Sign in with Google /
       Microsoft" flow instead of manually creating App Passwords.
 - [ ] **One-click install** — a signed & **notarized** DMG and a Homebrew cask so

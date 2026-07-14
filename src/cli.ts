@@ -3,9 +3,39 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { addAccount, listPublic, removeAccount, setDefault, testAccount } from "./accounts.js";
 import { loadAccounts } from "./registry.js";
-import { closeAll } from "./gmail/pool.js";
+import { closeAll } from "./providers/index.js";
+import type { ConnectionConfig, ProviderId } from "./providers/types.js";
 import { runInstall } from "./install.js";
 import { ensureServerConfig } from "./server-config.js";
+
+const KNOWN_PROVIDERS: ProviderId[] = ["gmail", "icloud", "fastmail", "imap"];
+
+/** Build the (provider, connection) pair from CLI flags for `add`. */
+function providerFromFlags(flags: Record<string, string | boolean>): {
+  provider: ProviderId;
+  connection?: ConnectionConfig;
+} {
+  const provider = (typeof flags.provider === "string" ? flags.provider : "gmail") as ProviderId;
+  if (!KNOWN_PROVIDERS.includes(provider)) {
+    throw new Error(`Unknown --provider "${provider}". One of: ${KNOWN_PROVIDERS.join(", ")}.`);
+  }
+  if (provider !== "imap") return { provider };
+
+  const imapHost = typeof flags["imap-host"] === "string" ? flags["imap-host"] : undefined;
+  const smtpHost = typeof flags["smtp-host"] === "string" ? flags["smtp-host"] : undefined;
+  if (!imapHost || !smtpHost) {
+    throw new Error("--provider imap requires --imap-host and --smtp-host.");
+  }
+  const starttls = Boolean(flags["smtp-starttls"]);
+  const connection: ConnectionConfig = {
+    imapHost,
+    imapPort: flags["imap-port"] ? Number(flags["imap-port"]) : 993,
+    smtpHost,
+    smtpPort: flags["smtp-port"] ? Number(flags["smtp-port"]) : starttls ? 587 : 465,
+    smtpSecure: !starttls,
+  };
+  return { provider, connection };
+}
 
 export const CLI_COMMANDS = new Set([
   "add",
@@ -89,6 +119,8 @@ function usage(): void {
       "  anymail-mcp                         Run the MCP server over stdio (how stdio agents launch it)",
       "  anymail-mcp --http [--port 8765]    Run the always-on local HTTP MCP + admin server",
       "  anymail-mcp add <email> [flags]     Add an account (prompts for App Password)",
+      "      --provider <id>              gmail (default) | icloud | fastmail | imap",
+      "      --imap-host / --smtp-host    Required for --provider imap (+ --imap-port/--smtp-port/--smtp-starttls)",
       '      --name "Full Name"           Display name',
       "      --default                    Make this the default account",
       "      --read-only                  Refuse all write operations for this account",
@@ -113,18 +145,24 @@ export async function runCli(argv: string[]): Promise<void> {
     switch (cmd) {
       case "add": {
         const email = positionals[0];
-        if (!email) throw new Error('Usage: anymail-mcp add <email> [--name "Name"] [--default] [--read-only]');
+        if (!email)
+          throw new Error(
+            'Usage: anymail-mcp add <email> [--provider gmail|icloud|fastmail|imap] [--name "Name"] [--default] [--read-only]',
+          );
+        const { provider, connection } = providerFromFlags(flags);
         const appPassword = await readPassword();
-        process.stderr.write(`Verifying ${email} …\n`);
+        process.stderr.write(`Verifying ${email} (${provider}) …\n`);
         const acct = await addAccount({
           email,
           appPassword,
+          provider,
+          connection,
           displayName: typeof flags.name === "string" ? flags.name : undefined,
           default: Boolean(flags.default),
           readOnly: Boolean(flags["read-only"]),
         });
         console.log(
-          `✓ Added ${acct.email}${acct.default ? " (default)" : ""}${acct.readOnly ? " (read-only)" : ""}`,
+          `✓ Added ${acct.email} [${acct.provider}]${acct.default ? " (default)" : ""}${acct.readOnly ? " (read-only)" : ""}`,
         );
         break;
       }
@@ -137,9 +175,10 @@ export async function runCli(argv: string[]): Promise<void> {
         }
         for (const a of accounts) {
           const mark = a.default ? "*" : " ";
-          const ro = a.readOnly ? " [read-only]" : "";
+          const prov = ` [${a.provider}]`;
+          const ro = a.readOnly ? " (read-only)" : "";
           const warn = a.credentialPresent ? "" : "  (⚠ no Keychain password — re-run add)";
-          console.log(`${mark} ${a.email}${ro}${warn}`);
+          console.log(`${mark} ${a.email}${prov}${ro}${warn}`);
         }
         break;
       }
