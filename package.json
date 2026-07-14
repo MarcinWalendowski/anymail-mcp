@@ -1,0 +1,53 @@
+{
+  "name": "anymail-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AnyMail MCP — a local macOS MCP server that connects multiple Gmail accounts to your AI agent (full CRUD over IMAP/SMTP, App Passwords in the Keychain).",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "gmail",
+    "imap",
+    "smtp",
+    "email",
+    "claude",
+    "macos"
+  ],
+  "homepage": "https://github.com/MarcinWalendowski/anymail-mcp#readme",
+  "bugs": "https://github.com/MarcinWalendowski/anymail-mcp/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MarcinWalendowski/anymail-mcp.git"
+  },
+  "author": "Marcin Walendowski",
+  "license": "MIT",
+  "bin": {
+    "anymail-mcp": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@napi-rs/keyring": "^1.1.6",
+    "imapflow": "^1.0.192",
+    "mailparser": "^3.7.1",
+    "nodemailer": "^9.0.3",
+    "pino": "^9.5.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.5",
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^6.4.16",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

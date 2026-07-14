@@ -1,0 +1,294 @@
+import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ok, fail } from "./result.js";
+import { assertWritable, loadAccounts, resolveEmail } from "../registry.js";
+import { hasAppPassword } from "../keychain.js";
+import * as imap from "../gmail/imap.js";
+import * as smtp from "../gmail/smtp.js";
+
+const account = z
+  .string()
+  .optional()
+  .describe("Gmail address to act on. Omit to use the default account.");
+const gmMsgId = z
+  .string()
+  .describe("Gmail message id (X-GM-MSGID), as returned by search_messages or get_message.");
+
+const composeShape = {
+  account,
+  to: z.union([z.string(), z.array(z.string())]).describe("Recipient address(es)."),
+  cc: z.union([z.string(), z.array(z.string())]).optional(),
+  bcc: z.union([z.string(), z.array(z.string())]).optional(),
+  subject: z.string(),
+  text: z.string().optional().describe("Plain-text body."),
+  html: z.string().optional().describe("HTML body (optional)."),
+  inReplyTo: z
+    .string()
+    .optional()
+    .describe("RFC822 Message-ID being replied to; sets In-Reply-To/References so Gmail threads it."),
+  attachments: z
+    .array(
+      z.object({
+        filename: z.string().optional(),
+        path: z.string().optional().describe("Absolute path to a local file to attach."),
+        contentBase64: z.string().optional().describe("Base64 content (alternative to path)."),
+        contentType: z.string().optional(),
+      }),
+    )
+    .optional(),
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Args = Record<string, any>;
+
+function reg(
+  server: McpServer,
+  name: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  config: any,
+  fn: (a: Args) => Promise<unknown>,
+): void {
+  server.registerTool(name, config, async (a: Args) => {
+    try {
+      return ok(await fn(a));
+    } catch (e) {
+      return fail(e);
+    }
+  });
+}
+
+export function registerTools(server: McpServer): void {
+  // ---------- read ----------
+  reg(
+    server,
+    "list_accounts",
+    {
+      title: "List Gmail accounts",
+      description:
+        "List the configured Gmail accounts (no secrets), showing which is default and which are read-only.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    async () =>
+      loadAccounts().map((acc) => ({
+        email: acc.email,
+        displayName: acc.displayName ?? null,
+        default: Boolean(acc.default),
+        readOnly: Boolean(acc.readOnly),
+        credentialPresent: hasAppPassword(acc.email),
+      })),
+  );
+
+  reg(
+    server,
+    "search_messages",
+    {
+      title: "Search messages",
+      description:
+        "Search a Gmail account with native Gmail query syntax (e.g. 'from:alice newer_than:7d has:attachment', 'in:anywhere subject:invoice'). Returns summaries with gmMsgId/gmThrId. Note: All Mail excludes Trash/Spam unless you add 'in:anywhere'.",
+      inputSchema: {
+        account,
+        query: z.string().describe("Gmail search query (X-GM-RAW syntax)."),
+        limit: z.number().int().min(1).max(100).optional().describe("Max results (default 25, newest first)."),
+        label: z.string().optional().describe("Restrict to a specific label/mailbox path instead of All Mail."),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) => imap.searchMessages(resolveEmail(a.account), a.query, a.limit ?? 25, a.label),
+  );
+
+  reg(
+    server,
+    "get_message",
+    {
+      title: "Get message",
+      description:
+        "Fetch a full message: headers, plain-text and HTML bodies, and attachment metadata (use get_attachment for bytes).",
+      inputSchema: { account, gmMsgId },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) => imap.getMessage(resolveEmail(a.account), a.gmMsgId),
+  );
+
+  reg(
+    server,
+    "get_thread",
+    {
+      title: "Get thread",
+      description: "Fetch all messages in a Gmail thread (by gmThrId), oldest first.",
+      inputSchema: {
+        account,
+        gmThrId: z.string().describe("Gmail thread id (X-GM-THRID) from search_messages."),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) => imap.getThread(resolveEmail(a.account), a.gmThrId),
+  );
+
+  reg(
+    server,
+    "list_labels",
+    {
+      title: "List labels",
+      description: "List all labels/mailboxes for the account, including special-use flags.",
+      inputSchema: { account },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) => imap.listLabels(resolveEmail(a.account)),
+  );
+
+  reg(
+    server,
+    "get_attachment",
+    {
+      title: "Get attachment",
+      description:
+        "Download one attachment from a message by index. Provide savePath to write it to disk (required for files >5MB); otherwise returns base64.",
+      inputSchema: {
+        account,
+        gmMsgId,
+        index: z.number().int().min(0).describe("Attachment index from get_message.attachments."),
+        savePath: z.string().optional().describe("Absolute path to write the attachment to."),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (a) => imap.getAttachment(resolveEmail(a.account), a.gmMsgId, a.index, a.savePath),
+  );
+
+  // ---------- create ----------
+  reg(
+    server,
+    "send_message",
+    {
+      title: "Send email",
+      description:
+        "Send an email from the account via Gmail SMTP. A copy is filed in Sent automatically. This delivers real mail — confirm before running.",
+      inputSchema: composeShape,
+      annotations: { destructiveHint: true, openWorldHint: true },
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return smtp.sendMessage(email, a as unknown as smtp.ComposeInput);
+    },
+  );
+
+  reg(
+    server,
+    "create_draft",
+    {
+      title: "Create draft",
+      description: "Compose a draft and save it to the Drafts mailbox (does not send).",
+      inputSchema: composeShape,
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return smtp.createDraft(email, a as unknown as smtp.ComposeInput);
+    },
+  );
+
+  reg(
+    server,
+    "create_label",
+    {
+      title: "Create label",
+      description: "Create a new Gmail label (nested labels use '/', e.g. 'Clients/Acme').",
+      inputSchema: { account, name: z.string().describe("Label name/path.") },
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return imap.createLabel(email, a.name);
+    },
+  );
+
+  // ---------- update ----------
+  reg(
+    server,
+    "modify_labels",
+    {
+      title: "Modify labels",
+      description:
+        "Add and/or remove Gmail labels on a message. System labels use a backslash prefix (\\Inbox, \\Starred, \\Important); custom labels use their plain name. Removing \\Inbox archives.",
+      inputSchema: {
+        account,
+        gmMsgId,
+        add: z.array(z.string()).optional().describe("Labels to add."),
+        remove: z.array(z.string()).optional().describe("Labels to remove."),
+      },
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return imap.modifyLabels(email, a.gmMsgId, a.add ?? [], a.remove ?? []);
+    },
+  );
+
+  const simpleWrite = (
+    name: string,
+    title: string,
+    description: string,
+    op: (email: string, id: string) => Promise<unknown>,
+    annotations: Record<string, boolean> = {},
+  ) =>
+    reg(server, name, { title, description, inputSchema: { account, gmMsgId }, annotations }, async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return op(email, a.gmMsgId);
+    });
+
+  simpleWrite("mark_read", "Mark read", "Mark a message as read (\\Seen).", imap.markRead);
+  simpleWrite("mark_unread", "Mark unread", "Mark a message as unread.", imap.markUnread);
+  simpleWrite("star", "Star", "Star a message.", imap.star);
+  simpleWrite("unstar", "Unstar", "Remove the star from a message.", imap.unstar);
+  simpleWrite("archive", "Archive", "Archive a message (remove it from the Inbox).", imap.archive);
+  simpleWrite(
+    "trash_message",
+    "Trash message",
+    "Move a message to Trash (reversible for ~30 days).",
+    imap.trashMessage,
+    { destructiveHint: true },
+  );
+
+  reg(
+    server,
+    "move_message",
+    {
+      title: "Move message",
+      description: "Move a message to a label: applies the target label and removes it from the Inbox.",
+      inputSchema: { account, gmMsgId, targetLabel: z.string().describe("Label to file the message under.") },
+    },
+    async (a) => {
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return imap.moveMessage(email, a.gmMsgId, a.targetLabel);
+    },
+  );
+
+  reg(
+    server,
+    "delete_message",
+    {
+      title: "Permanently delete message",
+      description:
+        "PERMANENTLY delete a message (moves to Trash then expunges). Irreversible. Requires confirm:true. Prefer trash_message for a reversible delete.",
+      inputSchema: {
+        account,
+        gmMsgId,
+        confirm: z.boolean().describe("Must be true to permanently delete."),
+      },
+      annotations: { destructiveHint: true, idempotentHint: true },
+    },
+    async (a) => {
+      if (a.confirm !== true) {
+        throw new Error(
+          "Refusing permanent delete without confirm:true. Use trash_message for a reversible delete.",
+        );
+      }
+      const email = resolveEmail(a.account);
+      assertWritable(email);
+      return imap.deleteMessage(email, a.gmMsgId);
+    },
+  );
+}

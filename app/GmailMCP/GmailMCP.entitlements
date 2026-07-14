@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Not sandboxed: the app spawns the Node engine (an external binary) and the
+    engine writes MCP config into other apps' support dirs during "Install into
+    Agents". App Sandbox would block both. This is a self-distributed local tool,
+    not a Mac App Store target.
+  -->
+  <key>com.apple.security.app-sandbox</key>
+  <false/>
+</dict>
+</plist>

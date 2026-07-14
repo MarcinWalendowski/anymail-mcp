@@ -1,0 +1,17 @@
+# dependencies & build output
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# macOS app: generated project + build artifacts
+app/*.xcodeproj/
+app/build/
+app/DerivedData/
+*.app
+
+# runtime config & secrets — these live in ~/.gmail-mcp and the Keychain,
+# never in the repo; ignored here as belt-and-suspenders
+.gmail-mcp/
+.env
+*.env
