@@ -194,3 +194,33 @@ Notes
 3. `dryRun` + `confirm` gating on the destructive ones.
 
 Everything else (full `bulk_*` matrix, cross-folder `in:anywhere`) can follow.
+
+---
+
+## 8. Large-batch timeout (resolved in v0.3.0)
+
+**Observed in real use:** trashing ~8,457 messages (top-20 senders) in one
+`bulk_trash` call ran past the MCP client's tool timeout after moving ~8,257. The
+engine did the safe thing — progress persisted per chunk and trashing is
+idempotent, so re-running finished the last ~200 — but the *tool call itself
+returned an error* instead of a partial result. For a big set that's a rough edge.
+
+**Fix shipped (not async, not a cursor):** the removing ops (trash/move/delete/
+empty) now act on at most **`max` messages per call (default 2000)** and return
+`{ matched, affected, remaining, done }`. Because an acted message leaves the search
+scope, **re-running the exact same call continues** where it left off; the agent
+loops until `done:true`. Each call stays well under the timeout.
+
+- **No cursor.** A UID high-water cursor was rejected: it would skip a failed
+  message (advance past it) and could then report `done:true` with the failure
+  silently dropped — violating the "partial failures reported, never a false
+  success" guarantee. Re-running instead keeps failures in scope so they retry,
+  and `failed[]` is always returned; `done:true` only means the whole matched set
+  was covered this call.
+- **Flag ops are not capped.** `mark_all_read` / `bulk_modify_labels` are cheap
+  STOREs and *don't* self-narrow (the messages stay), so capping them would loop on
+  the same first `max` forever. They run in one uncapped call. For `mark_all_read`
+  over a huge inbox, pass `query:"is:unread"` so it only touches what's needed.
+- **Not chosen:** an async job model (start → poll status). More moving parts and
+  engine-side job state; the re-run-until-done loop delivers the same resumability
+  for free given idempotent, self-narrowing removals.

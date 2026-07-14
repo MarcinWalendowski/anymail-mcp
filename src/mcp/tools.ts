@@ -4,7 +4,14 @@ import { ok, fail } from "./result.js";
 import { assertWritable, loadAccounts, resolveEmail } from "../registry.js";
 import { hasAppPassword } from "../keychain.js";
 import { getProvider } from "../providers/index.js";
-import type { BulkOpts, ComposeInput, MailProvider } from "../providers/types.js";
+import { addAccount } from "../accounts.js";
+import type {
+  BulkOpts,
+  ComposeInput,
+  ConnectionConfig,
+  MailProvider,
+  ProviderId,
+} from "../providers/types.js";
 
 const account = z
   .string()
@@ -53,6 +60,14 @@ const bulkShape = {
     .describe("Mailbox/label to run in (e.g. '[Gmail]/Spam'). Omit for the account's whole-mail scope (Gmail: All Mail)."),
   dryRun: z.boolean().optional().describe("Preview only: return the matched count + a small sample, changing nothing."),
   confirm: z.boolean().optional().describe("Required to actually run a destructive or large (>100) batch."),
+  max: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe(
+      "Cap on messages acted on this call for trash/move/delete/empty (default 2000, keeps calls under the timeout). If the result is done:false, re-run the same call (with confirm:true) to continue until done:true.",
+    ),
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,6 +78,7 @@ const bulkOpts = (a: Args): BulkOpts => ({
   mailbox: a.mailbox,
   dryRun: a.dryRun,
   confirm: a.confirm,
+  max: a.max,
 });
 
 function reg(
@@ -438,6 +454,60 @@ export function registerTools(server: McpServer): void {
       const email = resolveEmail(a.account);
       assertWritable(email);
       return getProvider(email).bulkEmpty("trash", bulkOpts(a));
+    },
+  );
+
+  // ---------- account management ----------
+  reg(
+    server,
+    "add_account",
+    {
+      title: "Add a mail account",
+      description:
+        "Add and verify a mail account, storing its App Password in the macOS Keychain (never in the registry or logs). provider: gmail (default) | icloud | fastmail | imap. For 'imap' pass imapHost + smtpHost (ports default to 993 / 465, or 587 with smtpStartTls). SECURITY: the App Password is an argument to this call, so it passes through the agent's context and the MCP client's logs. For the most private path, add accounts in the app's GUI instead — there the password goes straight to the local engine and the model never sees it.",
+      inputSchema: {
+        email: z.string().describe("The account's email address."),
+        appPassword: z.string().describe("App Password / IMAP password. Stored only in the Keychain."),
+        provider: z
+          .enum(["gmail", "icloud", "fastmail", "imap"])
+          .optional()
+          .describe("Mail provider (default gmail). Presets cover gmail/icloud/fastmail; 'imap' needs custom hosts."),
+        imapHost: z.string().optional().describe("IMAP host (required for provider 'imap', e.g. imap.host.tld)."),
+        imapPort: z.number().int().optional().describe("IMAP port (default 993)."),
+        smtpHost: z.string().optional().describe("SMTP host (required for provider 'imap', e.g. smtp.host.tld)."),
+        smtpPort: z.number().int().optional().describe("SMTP port (default 465, or 587 with smtpStartTls)."),
+        smtpStartTls: z.boolean().optional().describe("Use STARTTLS on 587 instead of implicit TLS on 465."),
+        displayName: z.string().optional(),
+        makeDefault: z.boolean().optional().describe("Make this the default account."),
+        readOnly: z.boolean().optional().describe("Refuse all writes for this account."),
+      },
+      annotations: { openWorldHint: true },
+    },
+    async (a) => {
+      const provider = (a.provider ?? "gmail") as ProviderId;
+      let connection: ConnectionConfig | undefined;
+      if (provider === "imap") {
+        if (!a.imapHost || !a.smtpHost) {
+          throw new Error("provider 'imap' requires imapHost and smtpHost.");
+        }
+        const startTls = a.smtpStartTls === true;
+        connection = {
+          imapHost: a.imapHost,
+          imapPort: a.imapPort ?? 993,
+          smtpHost: a.smtpHost,
+          smtpPort: a.smtpPort ?? (startTls ? 587 : 465),
+          smtpSecure: !startTls,
+        };
+      }
+      return addAccount({
+        email: a.email,
+        appPassword: a.appPassword,
+        provider,
+        connection,
+        displayName: a.displayName,
+        default: a.makeDefault === true,
+        readOnly: a.readOnly === true,
+      });
     },
   );
 }

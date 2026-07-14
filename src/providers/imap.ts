@@ -102,6 +102,13 @@ export const BULK_CONFIRM_OVER = 100;
 const BULK_CHUNK = 500;
 /** How many matched messages to include as a preview sample. */
 const BULK_SAMPLE = 10;
+/**
+ * Max messages a single removing-op call (trash/move/delete/empty) acts on before
+ * returning done:false, so one call stays under the MCP client's tool timeout.
+ * Acted messages leave the search scope, so re-running the same call continues.
+ * Flag ops (mark_read/labels) don't self-narrow and are cheap, so they run uncapped.
+ */
+const DEFAULT_BULK_MAX = 2000;
 
 /** The mutation a bulk op applies to a UID set. */
 export type BulkAction =
@@ -581,20 +588,22 @@ export class ImapProvider implements MailProvider {
       const matched = uids.length;
 
       if (matched === 0) {
-        return { mailbox, matched: 0, affected: 0, dryRun: Boolean(opts.dryRun), sample: [], failed: [], message: "Nothing matched." };
+        return { mailbox, matched: 0, affected: 0, remaining: 0, done: true, dryRun: Boolean(opts.dryRun), sample: [], failed: [], message: "Nothing matched." };
       }
 
       const sampleMsgs = await client.fetchAll(toRange(uids.slice(-BULK_SAMPLE)), this.summaryQuery, { uid: true });
       const sample = sampleMsgs.map((m) => this.formatFetched(m, mailbox, uidValidity)).sort(byDateDesc);
 
       if (opts.dryRun) {
-        return { mailbox, matched, affected: 0, dryRun: true, sample, failed: [] };
+        return { mailbox, matched, affected: 0, remaining: matched, done: false, dryRun: true, sample, failed: [] };
       }
       if ((requireConfirm || matched > BULK_CONFIRM_OVER) && opts.confirm !== true) {
         return {
           mailbox,
           matched,
           affected: 0,
+          remaining: matched,
+          done: false,
           dryRun: false,
           needsConfirm: true,
           message: `${matched} message(s) matched in ${mailbox}. Re-run with confirm:true to proceed, or dryRun:true to preview.`,
@@ -603,9 +612,16 @@ export class ImapProvider implements MailProvider {
         };
       }
 
+      // Removing ops (move/trash/delete) leave the search scope once acted, so a
+      // capped batch is safely resumable by re-running. Flag ops don't self-narrow
+      // (capping them would loop), and STOREs are cheap, so they run uncapped.
+      const selfNarrows = action.kind !== "flags";
+      const cap = selfNarrows ? Math.max(1, opts.max ?? DEFAULT_BULK_MAX) : matched;
+      const batch = uids.slice(0, cap);
+
       const failed: { uid: number; error: string }[] = [];
       let affected = 0;
-      for (const chunk of chunkUids(uids)) {
+      for (const chunk of chunkUids(batch)) {
         try {
           await this.applyAction(client, toRange(chunk), action);
           affected += chunk.length;
@@ -614,7 +630,15 @@ export class ImapProvider implements MailProvider {
           for (const uid of chunk) failed.push({ uid, error });
         }
       }
-      return { mailbox, matched, affected, dryRun: false, sample, failed };
+      const done = batch.length === matched;
+      const remaining = matched - affected;
+      let message: string | undefined;
+      if (!done) {
+        message = `Acted on ${affected} of ${matched} in ${mailbox}; ~${matched - batch.length} beyond this batch. Re-run the same call to continue until done:true.`;
+      } else if (failed.length) {
+        message = `Processed all ${matched}; ${failed.length} failed (see failed[]).`;
+      }
+      return { mailbox, matched, affected, remaining, done, dryRun: false, sample, failed, message };
     });
   }
 

@@ -53,15 +53,19 @@ final class AdminClient {
         appPassword: String,
         displayName: String?,
         makeDefault: Bool,
-        readOnly: Bool
+        readOnly: Bool,
+        provider: String,
+        connection: [String: Any]?
     ) async throws {
         var body: [String: Any] = [
             "email": email,
             "appPassword": appPassword,
             "default": makeDefault,
             "readOnly": readOnly,
+            "provider": provider,
         ]
         if let displayName, !displayName.isEmpty { body["displayName"] = displayName }
+        if let connection { body["connection"] = connection }
         _ = try await request("admin/accounts", method: "POST", body: body)
     }
 

@@ -118,6 +118,13 @@ export interface BulkOpts {
   dryRun?: boolean;
   /** Required to actually run a destructive or large (>100) batch. */
   confirm?: boolean;
+  /**
+   * Cap on how many messages a single call acts on, so a large batch stays under
+   * the MCP client's tool timeout. Applies only to message-removing ops
+   * (trash/move/delete/empty); flag ops are cheap and run uncapped. When the
+   * result is `done:false`, re-run the same call to continue. Default 2000.
+   */
+  max?: number;
 }
 
 /** Outcome of a bulk operation. Never reports success it didn't achieve. */
@@ -128,6 +135,14 @@ export interface BulkResult {
   matched: number;
   /** How many were actually mutated (0 on dryRun / needsConfirm). */
   affected: number;
+  /** Rough count still matching after this call (matched − affected). */
+  remaining: number;
+  /**
+   * True when this call finished the whole matched set (nothing left to do).
+   * False when a removing-op batch was capped by `max` — re-run the same call to
+   * continue. Failures are reported in `failed[]` regardless.
+   */
+  done: boolean;
   dryRun: boolean;
   /** True when the op stopped to ask for confirm:true (destructive or matched > 100). */
   needsConfirm?: boolean;

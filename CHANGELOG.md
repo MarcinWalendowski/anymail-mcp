@@ -12,6 +12,32 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Self-contained engine (bundled/compiled Node) + signed & notarized DMG + Homebrew.
 - `npm`/`npx` distribution for the CLI/engine.
 
+## [0.3.0] - 2026-07-14
+
+### Added
+- **"Create an App Password" assistant** in the menu-bar app's Add Account window.
+  Instead of leaving you to find Google's settings, one button opens the App
+  Passwords page in your own browser, or an AI agent can do it: the app copies a
+  ready-to-run task prompt and opens **Claude for Chrome** (local — drives your own
+  browser) or **ChatGPT / Claude.ai** (cloud). A **Paste** button drops the returned
+  16-character code into the field for the normal verify → Keychain flow. The app
+  never automates Google's page itself; cloud agents carry an inline full-mailbox
+  exposure warning and are never the default. (GUI only.)
+- **Add IMAP / custom accounts without the CLI** — a new `add_account` MCP tool
+  (provider `gmail` | `icloud` | `fastmail` | `imap`, with host/port config for custom
+  IMAP) and, in the app's Add Account window, a **provider picker** plus custom-IMAP
+  host/port fields. The GUI keeps the password off the model (it goes straight to the
+  local engine); the MCP tool carries a security caveat because the password is a tool
+  argument.
+
+### Fixed
+- **Large bulk operations no longer fail on the client tool timeout.** Removing ops
+  (trash / move / delete / empty) now act on up to `max` (default 2000) messages per
+  call and return `{matched, affected, remaining, done}`; when `done:false`, re-run the
+  same call to continue (acted messages leave the search scope, so it resumes cleanly,
+  and `failed[]` still reports per-message errors). Flag ops (mark_all_read,
+  bulk_modify_labels) stay uncapped. Fixes a real timeout on an ~8,400-message trash.
+
 ## [0.2.0] - 2026-07-14
 
 ### Added
@@ -65,6 +91,7 @@ Initial public release.
   read-only mode; `confirm:true` gate on permanent delete; stderr logging with
   secret redaction.
 
-[Unreleased]: https://github.com/MarcinWalendowski/anymail-mcp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/MarcinWalendowski/anymail-mcp/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/MarcinWalendowski/anymail-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/MarcinWalendowski/anymail-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/MarcinWalendowski/anymail-mcp/releases/tag/v0.1.0

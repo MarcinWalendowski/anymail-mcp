@@ -11,11 +11,12 @@ const INSTRUCTIONS = [
   "On Gmail: search uses native Gmail query syntax (add 'in:anywhere' for Trash/Spam) and messages carry labels. On other providers: search is a limited server-side text match, there are no labels (use move/archive instead of modify_labels), and get_thread is unavailable.",
   "Use trash_message for a reversible delete; delete_message is permanent and needs confirm:true.",
   "For whole-sets of mail, prefer the query-first bulk tools (mark_all_read, bulk_modify_labels, bulk_move, bulk_trash, bulk_delete, empty_spam, empty_trash) instead of looping single-message tools. Pass {query?, mailbox?}; call with dryRun:true first to see the matched count + sample, then confirm:true to run (required for destructive or >100-message batches). Target Spam/Trash with the mailbox param (e.g. '[Gmail]/Spam').",
+  "Bulk trash/move/delete/empty act on up to `max` (default 2000) messages per call to stay under the tool timeout: if the result has done:false, re-run the exact same call (keep confirm:true) until done:true — `remaining` estimates what's left, and `failed[]` lists any per-message errors.",
 ].join(" ");
 
 /** Build a fully-registered MCP server. Shared by the stdio and HTTP transports. */
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: "anymail-mcp", version: "0.2.0" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "anymail-mcp", version: "0.3.0" }, { instructions: INSTRUCTIONS });
   registerTools(server);
   return server;
 }
