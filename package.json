@@ -1,9 +1,9 @@
 {
   "name": "anymail-mcp",
-  "version": "0.0.1-rc.1",
+  "version": "0.0.1-rc.2",
   "private": true,
   "type": "module",
-  "description": "AnyMail MCP — a local macOS MCP server that connects multiple email accounts to your AI agent: Gmail, iCloud, Fastmail, or any IMAP host (full CRUD over IMAP/SMTP, App Passwords in the Keychain).",
+  "description": "AnyMail MCP \u2014 a local macOS MCP server that connects multiple email accounts to your AI agent: Gmail, iCloud, Fastmail, or any IMAP host (full CRUD over IMAP/SMTP, App Passwords in the Keychain).",
   "keywords": [
     "mcp",
     "model-context-protocol",

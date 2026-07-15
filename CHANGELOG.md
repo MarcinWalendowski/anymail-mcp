@@ -12,6 +12,21 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Self-contained engine (bundled/compiled Node) + signed & notarized DMG + Homebrew.
 - `npm`/`npx` distribution for the CLI/engine.
 
+## [0.0.1-rc.2] - 2026-07-15
+
+### Changed — BREAKING
+- **`gmMsgId` → `id`, `gmThrId` → `threadId`** across every tool's input and output.
+  The engine serves iCloud, Fastmail and generic IMAP as well as Gmail, but the schema
+  still named its ids after Gmail's `X-GM-MSGID` / `X-GM-THRID` — on a non-Gmail
+  account the id is really folder+uidvalidity+uid. The fields were always documented
+  as opaque and provider-defined; now they're named that way, matching what the code
+  calls them internally and what Gmail's own API calls them.
+
+  `get_message` and friends now take `{id}`; `get_thread` takes `{threadId}`. Note
+  `id` is **not** `messageId` — the latter is still the RFC822 Message-ID header, and
+  both appear on a message summary. Any agent that hardcoded the old field names must
+  be updated; agents reading the schema each session need no change.
+
 ## [0.0.1-rc.1] - 2026-07-15
 
 **First release candidate.** The earlier `v0.1.0`–`v0.3.0` tags and releases have been
@@ -73,5 +88,6 @@ the new Keychain service, and delete the stale `gmail-mcp` entries in Keychain A
 Gmail-specific names (`imap.gmail.com`, `[Gmail]/Spam`, the `X-GM-*` extensions) are
 unrelated to this and unchanged.
 
-[Unreleased]: https://github.com/MarcinWalendowski/anymail-mcp/compare/v0.0.1-rc.1...HEAD
+[Unreleased]: https://github.com/MarcinWalendowski/anymail-mcp/compare/v0.0.1-rc.2...HEAD
 [0.0.1-rc.1]: https://github.com/MarcinWalendowski/anymail-mcp/releases/tag/v0.0.1-rc.1
+[0.0.1-rc.2]: https://github.com/MarcinWalendowski/anymail-mcp/compare/v0.0.1-rc.1...v0.0.1-rc.2
