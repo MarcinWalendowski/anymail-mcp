@@ -5,7 +5,7 @@ import type { ConnectionConfig, ProviderId } from "./providers/types.js";
 
 // Non-secret account metadata. The App Password itself lives in the macOS
 // Keychain (see keychain.ts), never in this file.
-export const CONFIG_DIR = join(homedir(), ".gmail-mcp");
+export const CONFIG_DIR = join(homedir(), ".anymail-mcp");
 export const REGISTRY_PATH = join(CONFIG_DIR, "accounts.json");
 export const DOWNLOADS_DIR = join(CONFIG_DIR, "downloads");
 

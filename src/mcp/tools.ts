@@ -16,10 +16,14 @@ import type {
 const account = z
   .string()
   .optional()
-  .describe("Gmail address to act on. Omit to use the default account.");
+  .describe(
+    "Email address to act on (any connected provider). Omit to use the default account.",
+  );
 const gmMsgId = z
   .string()
-  .describe("Gmail message id (X-GM-MSGID), as returned by search_messages or get_message.");
+  .describe(
+    "Opaque message id as returned by search_messages or get_message (Gmail: X-GM-MSGID). Pass it back verbatim; never construct one.",
+  );
 
 const composeShape = {
   account,
@@ -32,7 +36,9 @@ const composeShape = {
   inReplyTo: z
     .string()
     .optional()
-    .describe("RFC822 Message-ID being replied to; sets In-Reply-To/References so Gmail threads it."),
+    .describe(
+      "RFC822 Message-ID being replied to; sets In-Reply-To/References so the reply threads correctly.",
+    ),
   attachments: z
     .array(
       z.object({
@@ -103,9 +109,9 @@ export function registerTools(server: McpServer): void {
     server,
     "list_accounts",
     {
-      title: "List Gmail accounts",
+      title: "List email accounts",
       description:
-        "List the configured Gmail accounts (no secrets), showing which is default and which are read-only.",
+        "List the configured email accounts (no secrets), showing each account's provider (gmail / icloud / fastmail / imap), which is default, and which are read-only. Check the provider before assuming labels, threads, or Gmail search syntax are available.",
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
@@ -126,10 +132,14 @@ export function registerTools(server: McpServer): void {
     {
       title: "Search messages",
       description:
-        "Search a Gmail account with native Gmail query syntax (e.g. 'from:alice newer_than:7d has:attachment', 'in:anywhere subject:invoice'). Returns summaries with gmMsgId/gmThrId. Note: All Mail excludes Trash/Spam unless you add 'in:anywhere'.",
+        "Search an account. On Gmail: native Gmail query syntax (e.g. 'from:alice newer_than:7d has:attachment', 'in:anywhere subject:invoice') — All Mail excludes Trash/Spam unless you add 'in:anywhere'. On other providers (icloud / fastmail / imap): a limited server-side text match, so Gmail operators are NOT understood — pass plain text and narrow with the folder param instead. Returns summaries with gmMsgId/gmThrId.",
       inputSchema: {
         account,
-        query: z.string().describe("Gmail search query (X-GM-RAW syntax)."),
+        query: z
+          .string()
+          .describe(
+            "Gmail: search query in X-GM-RAW syntax. Other providers: plain text to match, not query syntax.",
+          ),
         limit: z.number().int().min(1).max(100).optional().describe("Max results (default 25, newest first)."),
         label: z.string().optional().describe("Restrict to a specific label/mailbox path instead of All Mail."),
       },
@@ -156,7 +166,8 @@ export function registerTools(server: McpServer): void {
     "get_thread",
     {
       title: "Get thread",
-      description: "Fetch all messages in a Gmail thread (by gmThrId), oldest first.",
+      description:
+        "Fetch all messages in a thread (by gmThrId), oldest first. Gmail only — other providers cannot resolve threads server-side; fall back to search_messages.",
       inputSchema: {
         account,
         gmThrId: z.string().describe("Gmail thread id (X-GM-THRID) from search_messages."),
@@ -203,7 +214,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Send email",
       description:
-        "Send an email from the account via Gmail SMTP. A copy is filed in Sent automatically. This delivers real mail — confirm before running.",
+        "Send an email from the account via its provider's SMTP. A copy is filed in Sent automatically. This delivers real mail — confirm before running.",
       inputSchema: composeShape,
       annotations: { destructiveHint: true, openWorldHint: true },
     },
@@ -234,7 +245,8 @@ export function registerTools(server: McpServer): void {
     "create_label",
     {
       title: "Create label",
-      description: "Create a new Gmail label (nested labels use '/', e.g. 'Clients/Acme').",
+      description:
+        "Create a new Gmail label (nested labels use '/', e.g. 'Clients/Acme'). Gmail only — on folder-based providers create a folder and use move instead.",
       inputSchema: { account, name: z.string().describe("Label name/path.") },
     },
     async (a) => {
@@ -251,7 +263,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Modify labels",
       description:
-        "Add and/or remove Gmail labels on a message. System labels use a backslash prefix (\\Inbox, \\Starred, \\Important); custom labels use their plain name. Removing \\Inbox archives.",
+        "Add and/or remove Gmail labels on a message. System labels use a backslash prefix (\\Inbox, \\Starred, \\Important); custom labels use their plain name. Removing \\Inbox archives. Gmail only — on folder-based providers use move or archive.",
       inputSchema: {
         account,
         gmMsgId,

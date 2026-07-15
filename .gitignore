@@ -10,8 +10,8 @@ app/build/
 app/DerivedData/
 *.app
 
-# runtime config & secrets — these live in ~/.gmail-mcp and the Keychain,
+# runtime config & secrets — these live in ~/.anymail-mcp and the Keychain,
 # never in the repo; ignored here as belt-and-suspenders
-.gmail-mcp/
+.anymail-mcp/
 .env
 *.env

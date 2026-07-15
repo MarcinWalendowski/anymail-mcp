@@ -35,7 +35,7 @@ enum EnginePaths {
         if let res = Bundle.main.resourceURL?.appendingPathComponent("engine/dist/index.js").path,
            fm.fileExists(atPath: res) { return res }
         let dev = fm.homeDirectoryForCurrentUser
-            .appendingPathComponent("loki-labs/gmail-mcp/dist/index.js").path
+            .appendingPathComponent("loki-labs/anymail-mcp/dist/index.js").path
         if fm.fileExists(atPath: dev) { return dev }
         return nil
     }

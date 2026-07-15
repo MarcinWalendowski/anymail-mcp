@@ -55,8 +55,8 @@ environment — they're tied to your identity and payment.
 ## 1. Self-contained engine (the real blocker) 🚨 🤖
 
 Today the menu-bar app runs the user's **system `node dist/index.js`** (see
-`app/GmailMCP/NodeLocator.swift` → `EnginePaths.entry`, which currently falls back to
-the `~/loki-labs/gmail-mcp` dev checkout). A downloaded app cannot assume Node is
+`app/AnyMailMCP/NodeLocator.swift` → `EnginePaths.entry`, which currently falls back to
+the `~/loki-labs/anymail-mcp` dev checkout). A downloaded app cannot assume Node is
 installed — that's the same "it doesn't just work" trap as an unsigned app hitting
 Gatekeeper. The engine must ship *inside* the `.app`.
 
@@ -91,7 +91,7 @@ The maintainer provides the cert + notarytool key ([Prerequisites](#prerequisite
 the signing/notarizing pipeline itself is a script (🤖) that reads them from env, so it
 can be written and dry-run now and only *executed* once the secrets exist.
 
-**The app is intentionally not sandboxed** (`app/GmailMCP/GmailMCP.entitlements`) and
+**The app is intentionally not sandboxed** (`app/AnyMailMCP/AnyMailMCP.entitlements`) and
 **Hardened Runtime is already on** (`ENABLE_HARDENED_RUNTIME: YES` in `project.yml`) —
 notarization *requires* Hardened Runtime, so that's correct as-is.
 
@@ -124,7 +124,7 @@ codesign --force --timestamp --options runtime --entitlements engine.entitlement
 
 # 4) Sign the app bundle LAST, with the APP entitlements
 codesign --force --timestamp --options runtime \
-  --entitlements "app/GmailMCP/GmailMCP.entitlements" --sign "$ID" "$APP"
+  --entitlements "app/AnyMailMCP/AnyMailMCP.entitlements" --sign "$ID" "$APP"
 
 # Verify (here --deep IS allowed — it's only banned for *signing*)
 codesign --verify --deep --strict --verbose=2 "$APP"
@@ -152,7 +152,7 @@ signature** — putting them on the app does nothing for the engine. So step 1 n
 </plist>
 ```
 
-The app's own `GmailMCP.entitlements` stays as-is (sandbox off). Do **not** copy these
+The app's own `AnyMailMCP.entitlements` stays as-is (sandbox off). Do **not** copy these
 JIT keys onto the app — they belong to the runtime binary.
 
 ### 2d. Notarize + staple + verify 🤝

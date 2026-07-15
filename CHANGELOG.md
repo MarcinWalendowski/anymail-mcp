@@ -6,6 +6,42 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — BREAKING
+- **The last `gmail-mcp` identifiers are now `anymail-mcp`.** The rename to AnyMail
+  MCP previously covered only user-facing names; the stored identifiers kept the old
+  ones. They no longer do:
+  - macOS **Keychain service**: `gmail-mcp` → `anymail-mcp`
+  - **Config directory**: `~/.gmail-mcp/` → `~/.anymail-mcp/` (holds `accounts.json`
+    and the local server's `server.json` bearer token)
+  - App **bundle id**: `com.lokilabs.GmailMCP` → `com.lokilabs.AnyMailMCP`
+
+  **If you installed an earlier version, upgrading will not find your accounts or
+  App Passwords** — the engine looks under the new names. Either re-add each account
+  (`anymail-mcp add you@example.com`), or migrate in place before upgrading:
+
+  ```bash
+  mv ~/.gmail-mcp ~/.anymail-mcp   # keeps accounts.json + your server token
+  ```
+
+  Then re-enter each App Password once (`anymail-mcp add <email>` overwrites the
+  Keychain entry under the new service), and delete the stale `gmail-mcp` entries in
+  Keychain Access. Gmail-specific names are unaffected — this is only the product's
+  own identity, not the provider.
+
+### Documentation
+- README now presents **Gmail as one provider among several** rather than implying
+  Gmail-only: a new **Providers** section with a capability table (Gmail: labels,
+  threads, native search; iCloud / Fastmail / custom IMAP: folders, text-only search,
+  no threads), and the one-time App Password prerequisite now covers iCloud, Fastmail
+  and other IMAP hosts instead of only Google. Corrects an inconsistency where iCloud
+  and generic IMAP were described as roadmap items despite shipping in 0.3.0.
+- **MCP tool descriptions are provider-aware.** `account` is no longer described as a
+  "Gmail address", `send_message` no longer claims to send "via Gmail SMTP", and
+  `search_messages` documents that Gmail query syntax applies to Gmail only and that
+  other providers take plain text. Tools that genuinely are Gmail-only (`get_thread`,
+  `create_label`, `modify_labels`, `bulk_modify_labels`) now say so, so an agent stops
+  assuming Gmail semantics on an iCloud or IMAP account.
+
 ### Planned
 - OAuth sign-in as an alternative to App Passwords.
 - Microsoft 365 / Outlook provider (needs OAuth — basic-auth IMAP is being retired).

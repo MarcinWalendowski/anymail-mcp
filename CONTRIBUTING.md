@@ -33,7 +33,7 @@ Before opening a PR:
 
 - `npm run typecheck` must pass.
 - Never commit secrets. Account config and the server token live in
-  `~/.gmail-mcp/` (outside the repo); App Passwords live in the Keychain. See
+  `~/.anymail-mcp/` (outside the repo); App Passwords live in the Keychain. See
   [SECURITY.md](SECURITY.md).
 
 ## Good first contributions

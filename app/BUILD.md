@@ -18,7 +18,7 @@ Password (it posts it once to `127.0.0.1`, the engine stores it in the Keychain)
 - **XcodeGen**: `brew install xcodegen`.
 - The engine built once:
   ```bash
-  cd ..            # gmail-mcp/
+  cd ..            # anymail-mcp/
   npm install && npm run build
   ```
 
@@ -26,13 +26,13 @@ Password (it posts it once to `127.0.0.1`, the engine stores it in the Keychain)
 
 ```bash
 cd app
-xcodegen generate          # → GmailMCP.xcodeproj
-open GmailMCP.xcodeproj     # set your Signing Team (Signing & Capabilities), then Run
+xcodegen generate          # → AnyMailMCP.xcodeproj
+open AnyMailMCP.xcodeproj     # set your Signing Team (Signing & Capabilities), then Run
 ```
 
 Or headless:
 ```bash
-xcodebuild -project GmailMCP.xcodeproj -scheme GmailMCP -configuration Release \
+xcodebuild -project AnyMailMCP.xcodeproj -scheme AnyMailMCP -configuration Release \
   -derivedDataPath build build
 open "build/Build/Products/Release/AnyMail MCP.app"
 ```
@@ -43,12 +43,12 @@ On launch a mail icon appears in the menu bar. Use **Add Account…**, then
 ## Paths
 
 The app finds the engine at (in order): a bundled `Resources/engine/dist/index.js`,
-an override, or `~/loki-labs/gmail-mcp/dist/index.js` (the dev checkout). Node is
+an override, or `~/loki-labs/anymail-mcp/dist/index.js` (the dev checkout). Node is
 auto-detected. To override either:
 
 ```bash
-defaults write com.lokilabs.GmailMCP nodePath   /opt/homebrew/bin/node
-defaults write com.lokilabs.GmailMCP enginePath /ABS/PATH/gmail-mcp/dist/index.js
+defaults write com.lokilabs.AnyMailMCP nodePath   /opt/homebrew/bin/node
+defaults write com.lokilabs.AnyMailMCP enginePath /ABS/PATH/anymail-mcp/dist/index.js
 ```
 
 ## Notes & caveats

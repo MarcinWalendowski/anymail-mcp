@@ -7,15 +7,15 @@ everything but your agent.
 ## Where credentials live
 
 - **App Passwords** are stored **only in the macOS Keychain** (service
-  `gmail-mcp`, keyed by email). They are never written to disk, never placed in
+  `anymail-mcp`, keyed by email). They are never written to disk, never placed in
   environment variables that persist, never logged, and never returned in any
   API/tool response.
 - **Non-secret account config** (which emails are connected, which is default,
-  read-only flags) lives in `~/.gmail-mcp/accounts.json`.
-- **The local server's bearer token** lives in `~/.gmail-mcp/server.json`
+  read-only flags) lives in `~/.anymail-mcp/accounts.json`.
+- **The local server's bearer token** lives in `~/.anymail-mcp/server.json`
   (`0600`).
 
-None of these are inside the repository, and `~/.gmail-mcp/` is ignored by git
+None of these are inside the repository, and `~/.anymail-mcp/` is ignored by git
 as a belt-and-suspenders measure.
 
 ## Local server hardening
@@ -27,8 +27,24 @@ as a belt-and-suspenders measure.
   DNS-rebinding from a malicious web page).
 - **Permanent delete** requires an explicit `confirm: true`; `trash_message` is
   the reversible default.
+- **Bulk operations are gated too** — the query-first bulk tools support
+  `dryRun: true` to preview the exact matched count before touching anything, and
+  destructive or large (>100-message) batches require `confirm: true`. Per-message
+  failures are surfaced in the result rather than silently dropped.
 - **Per-account read-only mode** refuses all write operations for accounts you
   only want to triage.
+
+## Adding accounts keeps the password off the model
+
+The most private way to connect an account is the app's **Add Account** window or
+the **CLI** (`anymail-mcp add`): the App Password is posted straight to the local
+engine and stored in the Keychain — the AI model never sees it.
+
+The `add_account` **MCP tool** is a convenience for adding accounts from an agent,
+but its `appPassword` argument is part of the tool call, so it passes through the
+agent's context and the MCP client's logs. Prefer the GUI or CLI when you can, and
+revoke-and-rotate the App Password if you ever add one through an agent you don't
+fully control.
 
 ## App Password blast radius
 

@@ -2,7 +2,7 @@ import { Entry } from "@napi-rs/keyring";
 
 // @napi-rs/keyring ships prebuilt native binaries (no node-gyp) and is backed
 // by the macOS Security framework (login Keychain) on darwin.
-const SERVICE = "gmail-mcp";
+const SERVICE = "anymail-mcp";
 
 // Cache passwords in memory for the process lifetime. Reading the Keychain on
 // every IMAP/SMTP (re)connect would trigger a "node wants to use your keychain"

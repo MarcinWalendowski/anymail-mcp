@@ -43,7 +43,7 @@ On a Mac with an Apple Developer account:
 
 ```bash
 cd app && xcodegen generate
-xcodebuild -project GmailMCP.xcodeproj -scheme GmailMCP -configuration Release \
+xcodebuild -project AnyMailMCP.xcodeproj -scheme AnyMailMCP -configuration Release \
   -derivedDataPath build build
 # codesign with Developer ID, staple, and notarize:
 xcrun notarytool submit "AnyMail MCP.dmg" --apple-id <id> --team-id <team> --wait

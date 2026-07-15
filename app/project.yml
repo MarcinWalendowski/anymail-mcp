@@ -1,28 +1,28 @@
-name: GmailMCP
+name: AnyMailMCP
 options:
   bundleIdPrefix: com.lokilabs
   createIntermediateGroups: true
   deploymentTarget:
     macOS: "13.0"
 targets:
-  GmailMCP:
+  AnyMailMCP:
     type: application
     platform: macOS
     sources:
-      - path: GmailMCP
+      - path: AnyMailMCP
         excludes:
-          - "GmailMCP.entitlements"
+          - "AnyMailMCP.entitlements"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.lokilabs.GmailMCP
+        PRODUCT_BUNDLE_IDENTIFIER: com.lokilabs.AnyMailMCP
         PRODUCT_NAME: AnyMail MCP
         MARKETING_VERSION: "0.3.0"
         CURRENT_PROJECT_VERSION: "3"
         SWIFT_VERSION: "5.0"
         MACOSX_DEPLOYMENT_TARGET: "13.0"
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: AnyMailMCP/AnyMailMCP.entitlements
         ENABLE_HARDENED_RUNTIME: YES
-        CODE_SIGN_ENTITLEMENTS: GmailMCP/GmailMCP.entitlements
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: "Loki Labs"

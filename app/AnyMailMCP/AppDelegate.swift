@@ -163,8 +163,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             """
             Auto-detection failed. Set them in Terminal, then relaunch the app:
 
-            defaults write com.lokilabs.GmailMCP nodePath /opt/homebrew/bin/node
-            defaults write com.lokilabs.GmailMCP enginePath \(home)/loki-labs/gmail-mcp/dist/index.js
+            defaults write com.lokilabs.AnyMailMCP nodePath /opt/homebrew/bin/node
+            defaults write com.lokilabs.AnyMailMCP enginePath \(home)/loki-labs/anymail-mcp/dist/index.js
             """
         )
     }
