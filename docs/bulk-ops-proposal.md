@@ -14,6 +14,11 @@ Grounded in the current code: `src/providers/gmail.ts`, `src/providers/imap.ts`,
 > move→re-find→expunge); `mark_all_unread` / `bulk_star` / `bulk_unstar` were not
 > built (use `bulk_modify_labels` / the single-message tools). The `delete()`
 > false-success bug is fixed. See `CHANGELOG.md` for the shipped tool surface.
+>
+> **Naming:** the sketches below say `gmMsgId` / `gmMsgIds[]`. The shipped fields are
+> **`id`** and **`threadId`** (renamed once the engine stopped being Gmail-only), and
+> the bulk tools are query-first — they never took an id array. Read the code sketches
+> for their shape, not their names.
 
 ---
 

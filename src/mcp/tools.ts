@@ -19,10 +19,12 @@ const account = z
   .describe(
     "Email address to act on (any connected provider). Omit to use the default account.",
   );
-const gmMsgId = z
+// Named *Param to avoid shadowing the local `id` bindings used in the write helpers
+// below; the wire field is `id` via the explicit keys in each inputSchema.
+const msgIdParam = z
   .string()
   .describe(
-    "Opaque message id as returned by search_messages or get_message (Gmail: X-GM-MSGID). Pass it back verbatim; never construct one.",
+    "Opaque message id (the `id` field returned by search_messages or get_message; Gmail: X-GM-MSGID). Pass it back verbatim; never construct one. Not the same as `messageId`, which is the RFC822 Message-ID header.",
   );
 
 const composeShape = {
@@ -132,7 +134,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Search messages",
       description:
-        "Search an account. On Gmail: native Gmail query syntax (e.g. 'from:alice newer_than:7d has:attachment', 'in:anywhere subject:invoice') — All Mail excludes Trash/Spam unless you add 'in:anywhere'. On other providers (icloud / fastmail / imap): a limited server-side text match, so Gmail operators are NOT understood — pass plain text and narrow with the folder param instead. Returns summaries with gmMsgId/gmThrId.",
+        "Search an account. On Gmail: native Gmail query syntax (e.g. 'from:alice newer_than:7d has:attachment', 'in:anywhere subject:invoice') — All Mail excludes Trash/Spam unless you add 'in:anywhere'. On other providers (icloud / fastmail / imap): a limited server-side text match, so Gmail operators are NOT understood — pass plain text and narrow with the folder param instead. Returns summaries carrying `id` (pass back to act on a message) and `threadId`.",
       inputSchema: {
         account,
         query: z
@@ -155,10 +157,10 @@ export function registerTools(server: McpServer): void {
       title: "Get message",
       description:
         "Fetch a full message: headers, plain-text and HTML bodies, and attachment metadata (use get_attachment for bytes).",
-      inputSchema: { account, gmMsgId },
+      inputSchema: { account, id: msgIdParam },
       annotations: { readOnlyHint: true },
     },
-    async (a) => getProvider(resolveEmail(a.account)).getMessage(a.gmMsgId),
+    async (a) => getProvider(resolveEmail(a.account)).getMessage(a.id),
   );
 
   reg(
@@ -167,14 +169,16 @@ export function registerTools(server: McpServer): void {
     {
       title: "Get thread",
       description:
-        "Fetch all messages in a thread (by gmThrId), oldest first. Gmail only — other providers cannot resolve threads server-side; fall back to search_messages.",
+        "Fetch all messages in a thread (by threadId), oldest first. Gmail only — other providers cannot resolve threads server-side; fall back to search_messages.",
       inputSchema: {
         account,
-        gmThrId: z.string().describe("Gmail thread id (X-GM-THRID) from search_messages."),
+        threadId: z
+          .string()
+          .describe("Opaque thread id — the `threadId` field from search_messages (Gmail: X-GM-THRID)."),
       },
       annotations: { readOnlyHint: true },
     },
-    async (a) => getProvider(resolveEmail(a.account)).getThread(a.gmThrId),
+    async (a) => getProvider(resolveEmail(a.account)).getThread(a.threadId),
   );
 
   reg(
@@ -198,13 +202,13 @@ export function registerTools(server: McpServer): void {
         "Download one attachment from a message by index. Provide savePath to write it to disk (required for files >5MB); otherwise returns base64.",
       inputSchema: {
         account,
-        gmMsgId,
+        id: msgIdParam,
         index: z.number().int().min(0).describe("Attachment index from get_message.attachments."),
         savePath: z.string().optional().describe("Absolute path to write the attachment to."),
       },
       annotations: { readOnlyHint: true },
     },
-    async (a) => getProvider(resolveEmail(a.account)).getAttachment(a.gmMsgId, a.index, a.savePath),
+    async (a) => getProvider(resolveEmail(a.account)).getAttachment(a.id, a.index, a.savePath),
   );
 
   // ---------- create ----------
@@ -266,7 +270,7 @@ export function registerTools(server: McpServer): void {
         "Add and/or remove Gmail labels on a message. System labels use a backslash prefix (\\Inbox, \\Starred, \\Important); custom labels use their plain name. Removing \\Inbox archives. Gmail only — on folder-based providers use move or archive.",
       inputSchema: {
         account,
-        gmMsgId,
+        id: msgIdParam,
         add: z.array(z.string()).optional().describe("Labels to add."),
         remove: z.array(z.string()).optional().describe("Labels to remove."),
       },
@@ -274,7 +278,7 @@ export function registerTools(server: McpServer): void {
     async (a) => {
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return getProvider(email).modifyLabels(a.gmMsgId, a.add ?? [], a.remove ?? []);
+      return getProvider(email).modifyLabels(a.id, a.add ?? [], a.remove ?? []);
     },
   );
 
@@ -285,10 +289,10 @@ export function registerTools(server: McpServer): void {
     op: (provider: MailProvider, id: string) => Promise<unknown>,
     annotations: Record<string, boolean> = {},
   ) =>
-    reg(server, name, { title, description, inputSchema: { account, gmMsgId }, annotations }, async (a) => {
+    reg(server, name, { title, description, inputSchema: { account, id: msgIdParam }, annotations }, async (a) => {
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return op(getProvider(email), a.gmMsgId);
+      return op(getProvider(email), a.id);
     });
 
   simpleWrite("mark_read", "Mark read", "Mark a message as read (\\Seen).", (p, id) => p.markRead(id, true));
@@ -310,12 +314,12 @@ export function registerTools(server: McpServer): void {
     {
       title: "Move message",
       description: "Move a message to a label: applies the target label and removes it from the Inbox.",
-      inputSchema: { account, gmMsgId, targetLabel: z.string().describe("Label to file the message under.") },
+      inputSchema: { account, id: msgIdParam, targetLabel: z.string().describe("Label to file the message under.") },
     },
     async (a) => {
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return getProvider(email).move(a.gmMsgId, a.targetLabel);
+      return getProvider(email).move(a.id, a.targetLabel);
     },
   );
 
@@ -328,7 +332,7 @@ export function registerTools(server: McpServer): void {
         "PERMANENTLY delete a message (moves to Trash then expunges). Irreversible. Requires confirm:true. Prefer trash_message for a reversible delete.",
       inputSchema: {
         account,
-        gmMsgId,
+        id: msgIdParam,
         confirm: z.boolean().describe("Must be true to permanently delete."),
       },
       annotations: { destructiveHint: true, idempotentHint: true },
@@ -341,7 +345,7 @@ export function registerTools(server: McpServer): void {
       }
       const email = resolveEmail(a.account);
       assertWritable(email);
-      return getProvider(email).delete(a.gmMsgId);
+      return getProvider(email).delete(a.id);
     },
   );
 

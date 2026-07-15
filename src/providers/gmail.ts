@@ -171,7 +171,7 @@ export class GmailProvider extends ImapProvider {
     return this.withResolved(id, async (client, uid) => {
       if (add.length) await client.messageFlagsAdd(String(uid), add, { uid: true, useLabels: true });
       if (remove.length) await client.messageFlagsRemove(String(uid), remove, { uid: true, useLabels: true });
-      return { gmMsgId: id, added: add, removed: remove };
+      return { id, added: add, removed: remove };
     });
   }
 
@@ -179,7 +179,7 @@ export class GmailProvider extends ImapProvider {
     return this.withResolved(id, async (client, uid) => {
       if (on) await client.messageFlagsAdd(String(uid), [flag], { uid: true });
       else await client.messageFlagsRemove(String(uid), [flag], { uid: true });
-      return { gmMsgId: id, flag, on };
+      return { id, flag, on };
     });
   }
 
@@ -207,9 +207,9 @@ export class GmailProvider extends ImapProvider {
   async trash(id: string): Promise<MutationResult> {
     const trash = this.requireBox(await this.boxes(), "trash");
     return this.withResolved(id, async (client, uid, mailbox) => {
-      if (mailbox === trash) return { gmMsgId: id, trashed: true }; // already in Trash
+      if (mailbox === trash) return { id, trashed: true }; // already in Trash
       await client.messageMove(String(uid), trash, { uid: true });
-      return { gmMsgId: id, trashed: true };
+      return { id, trashed: true };
     });
   }
 
@@ -232,7 +232,7 @@ export class GmailProvider extends ImapProvider {
     if (found.mailbox === trash || (spam && found.mailbox === spam)) {
       return withMailbox(client, found.mailbox, async () => {
         await client.messageDelete(String(found.uid), { uid: true });
-        return { gmMsgId: id, deleted: true, from: found.mailbox };
+        return { id, deleted: true, from: found.mailbox };
       });
     }
 
@@ -249,7 +249,7 @@ export class GmailProvider extends ImapProvider {
         );
       }
       await client.messageDelete(String(uid), { uid: true });
-      return { gmMsgId: id, deleted: true };
+      return { id, deleted: true };
     });
   }
 

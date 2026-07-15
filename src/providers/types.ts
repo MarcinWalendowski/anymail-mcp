@@ -37,10 +37,14 @@ export interface SpecialMailboxes {
 }
 
 export interface MessageSummary {
-  /** Opaque, provider-defined message id. Gmail: X-GM-MSGID. Generic IMAP: folder+uidvalidity+uid. */
-  gmMsgId: string | null;
+  /**
+   * Opaque, provider-defined message id — the handle callers pass back to act on
+   * this message. Gmail: X-GM-MSGID. Generic IMAP: folder+uidvalidity+uid.
+   * Distinct from `messageId`, which is the RFC822 Message-ID header.
+   */
+  id: string | null;
   /** Opaque thread id (Gmail X-GM-THRID); null on providers without server-side threads. */
-  gmThrId: string | null;
+  threadId: string | null;
   uid: number;
   subject: string;
   from: string;
@@ -101,7 +105,7 @@ export type AttachmentResult =
 
 /** A small status object returned by write ops. Always carries the message id. */
 export interface MutationResult {
-  gmMsgId: string;
+  id: string;
   [key: string]: unknown;
 }
 

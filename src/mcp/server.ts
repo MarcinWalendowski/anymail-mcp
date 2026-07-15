@@ -7,7 +7,7 @@ import { logger } from "../logger.js";
 const INSTRUCTIONS = [
   "Multi-account, multi-provider email over IMAP/SMTP (Gmail, plus iCloud / Fastmail / generic IMAP).",
   "Every tool takes an optional `account` (email address); omit it to use the default account. list_accounts shows each account's provider.",
-  "Message ids (gmMsgId) and thread ids (gmThrId) are opaque strings returned by search_messages / get_message — pass them back verbatim, never construct them.",
+  "Message ids (`id`) and thread ids (`threadId`) are opaque strings returned by search_messages / get_message — pass them back verbatim, never construct them. `id` is not `messageId`, which is the RFC822 Message-ID header.",
   "On Gmail: search uses native Gmail query syntax (add 'in:anywhere' for Trash/Spam) and messages carry labels. On other providers: search is a limited server-side text match, there are no labels (use move/archive instead of modify_labels), and get_thread is unavailable.",
   "Use trash_message for a reversible delete; delete_message is permanent and needs confirm:true.",
   "For whole-sets of mail, prefer the query-first bulk tools (mark_all_read, bulk_modify_labels, bulk_move, bulk_trash, bulk_delete, empty_spam, empty_trash) instead of looping single-message tools. Pass {query?, mailbox?}; call with dryRun:true first to see the matched count + sample, then confirm:true to run (required for destructive or >100-message batches). Target Spam/Trash with the mailbox param (e.g. '[Gmail]/Spam').",

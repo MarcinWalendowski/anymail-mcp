@@ -73,8 +73,8 @@ export function formatSummary(msg: FetchMsg): MessageSummary {
   const env = msg.envelope ?? ({} as NonNullable<FetchMsg["envelope"]>);
   const flags = msg.flags ?? new Set<string>();
   return {
-    gmMsgId: msg.emailId ?? null,
-    gmThrId: msg.threadId ?? null,
+    id: msg.emailId ?? null,
+    threadId: msg.threadId ?? null,
     uid: msg.uid,
     subject: env.subject ?? "",
     from: fmtAddr(env.from as Address[] | undefined),
@@ -424,7 +424,7 @@ export class ImapProvider implements MailProvider {
       return msgs
         .map((m) => {
           const s = formatSummary(m);
-          s.gmMsgId = this.makeId(scope, uidValidity, m.uid);
+          s.id = this.makeId(scope, uidValidity, m.uid);
           return s;
         })
         .sort(byDateDesc);
@@ -436,7 +436,7 @@ export class ImapProvider implements MailProvider {
       const msg = await client.fetchOne(String(uid), { ...BASE_SUMMARY_QUERY, source: true }, { uid: true });
       if (!msg) throw new NotFoundError(id);
       const summary = formatSummary(msg);
-      summary.gmMsgId = id;
+      summary.id = id;
       const parsed = await simpleParser(msg.source as Buffer);
       return {
         ...summary,
@@ -495,7 +495,7 @@ export class ImapProvider implements MailProvider {
     return this.withMessage(id, async (client, uid) => {
       if (on) await client.messageFlagsAdd(String(uid), [flag], { uid: true });
       else await client.messageFlagsRemove(String(uid), [flag], { uid: true });
-      return { gmMsgId: id, flag, on };
+      return { id, flag, on };
     });
   }
 
@@ -516,7 +516,7 @@ export class ImapProvider implements MailProvider {
   async move(id: string, target: string): Promise<MutationResult> {
     return this.withMessage(id, async (client, uid) => {
       await client.messageMove(String(uid), target, { uid: true });
-      return { gmMsgId: id, movedTo: target };
+      return { id, movedTo: target };
     });
   }
 
@@ -525,7 +525,7 @@ export class ImapProvider implements MailProvider {
     const trash = this.requireBox(boxes, "trash");
     return this.withMessage(id, async (client, uid) => {
       await client.messageMove(String(uid), trash, { uid: true });
-      return { gmMsgId: id, trashed: true };
+      return { id, trashed: true };
     });
   }
 
@@ -533,7 +533,7 @@ export class ImapProvider implements MailProvider {
     // Standard IMAP permanent delete: \Deleted + EXPUNGE in place.
     return this.withMessage(id, async (client, uid) => {
       await client.messageDelete(String(uid), { uid: true });
-      return { gmMsgId: id, deleted: true };
+      return { id, deleted: true };
     });
   }
 
@@ -550,7 +550,7 @@ export class ImapProvider implements MailProvider {
   /** Turn a fetched message into a summary with a usable id. Gmail overrides (X-GM-MSGID). */
   protected formatFetched(msg: FetchMsg, scope: string, uidValidity: bigint | number | string): MessageSummary {
     const s = formatSummary(msg);
-    s.gmMsgId = this.makeId(scope, uidValidity, msg.uid);
+    s.id = this.makeId(scope, uidValidity, msg.uid);
     return s;
   }
 
