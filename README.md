@@ -14,7 +14,7 @@ the others work today with a smaller feature set — see [Providers](#providers)
 
 ![platform: macOS](https://img.shields.io/badge/platform-macOS%2013%2B-black)
 ![license: MIT](https://img.shields.io/badge/license-MIT-blue)
-![status: v0.3.0](https://img.shields.io/badge/status-v0.3.0%20%C2%B7%20Gmail%20%2B%20IMAP-orange)
+![status: v0.0.1-rc.1](https://img.shields.io/badge/status-v0.0.1--rc.1%20%C2%B7%20Gmail%20%2B%20IMAP-orange)
 
 ---
 
@@ -29,8 +29,9 @@ AnyMail MCP removes that limit. Connect every account you have — across provid
 and your agent can search, triage, draft, send, label, and clean up across **all of
 them** in a single session, while every credential stays on your machine.
 
-> v0.3.0 authenticates with **App Passwords**. Microsoft 365 / Outlook and OAuth
-> sign-in are on the [roadmap](#roadmap).
+> **Pre-1.0 — v0.0.1-rc.1.** This is a release candidate: it works, but interfaces
+> may still change without notice. Authentication is via **App Passwords**;
+> Microsoft 365 / Outlook and OAuth sign-in are on the [roadmap](#roadmap).
 
 ## Providers
 

@@ -6,9 +6,14 @@ Developer account and macOS runners that aren't wired up here.
 
 ## Cut a release
 
-1. **Bump the version** in all three places so they agree:
+1. **Bump the version** in all four places so they agree:
    - `package.json` → `version`
-   - `app/project.yml` → `MARKETING_VERSION`
+   - `src/mcp/server.ts` → the `McpServer({ version })` string — this is what the
+     engine reports to agents in `initialize`, so a stale value misreports the
+     running build. Easy to miss; check it.
+   - `app/project.yml` → `MARKETING_VERSION` (Apple requires one-to-three integers
+     here, so a pre-release suffix like `-rc.1` lives in `package.json` and the tag,
+     not in this field)
    - `app/project.yml` → `CURRENT_PROJECT_VERSION` (integer build number, +1)
 2. **Update `CHANGELOG.md`** — move items out of `[Unreleased]` into a new
    dated `## [x.y.z]` section, and update the compare/tag links at the bottom.

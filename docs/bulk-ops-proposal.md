@@ -6,7 +6,7 @@ as read", "empty Spam") in a single, cheap operation instead of one-message-at-a
 Grounded in the current code: `src/providers/gmail.ts`, `src/providers/imap.ts`,
 `src/mcp/tools.ts`. Stack: `imapflow` + Gmail X-GM-* extensions.
 
-> **Status: implemented in v0.2.0** (2026-07-14) — kept for design rationale. What
+> **Status: implemented** (shipped in v0.0.1-rc.1) — kept for design rationale. What
 > actually shipped differs in a few places: the bulk engine (`runBulk`) lives on
 > the base `ImapProvider` (so generic IMAP gets it too) and `resolveAnywhere` on
 > `GmailProvider`; chunks are ≤500 UIDs compacted into `a:b` ranges; Gmail
@@ -197,7 +197,7 @@ Everything else (full `bulk_*` matrix, cross-folder `in:anywhere`) can follow.
 
 ---
 
-## 8. Large-batch timeout (resolved in v0.3.0)
+## 8. Large-batch timeout (resolved)
 
 **Observed in real use:** trashing ~8,457 messages (top-20 senders) in one
 `bulk_trash` call ran past the MCP client's tool timeout after moving ~8,257. The

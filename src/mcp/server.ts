@@ -16,7 +16,7 @@ const INSTRUCTIONS = [
 
 /** Build a fully-registered MCP server. Shared by the stdio and HTTP transports. */
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: "anymail-mcp", version: "0.3.0" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "anymail-mcp", version: "0.0.1-rc.1" }, { instructions: INSTRUCTIONS });
   registerTools(server);
   return server;
 }
