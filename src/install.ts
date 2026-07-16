@@ -19,25 +19,26 @@ export interface InstallCtx {
 export interface AgentTarget {
   id: string;
   name: string;
-  configPath: string;
+  /** Resolved config path for the current platform, or null when the agent has
+   * no known config location on this OS (so it is skipped, not written). */
+  configPath: string | null;
   /** Top-level key holding the server map. */
   key: "mcpServers" | "servers";
   transport: "http" | "stdio";
   buildEntry: (ctx: InstallCtx) => Record<string, unknown>;
 }
 
-const HOME = homedir();
-const APP_SUPPORT = join(HOME, "Library", "Application Support");
+/** The static parts of an agent target, independent of the current platform. */
+type AgentDef = Omit<AgentTarget, "configPath">;
 
 function bearer(ctx: InstallCtx): Record<string, string> {
   return { Authorization: `Bearer ${ctx.token}` };
 }
 
-export const AGENTS: AgentTarget[] = [
+const AGENT_DEFS: AgentDef[] = [
   {
     id: "claude-desktop",
     name: "Claude Desktop",
-    configPath: join(APP_SUPPORT, "Claude", "claude_desktop_config.json"),
     key: "mcpServers",
     transport: "stdio",
     buildEntry: (ctx) => ({ command: ctx.nodePath, args: [ctx.entryJs] }),
@@ -45,7 +46,6 @@ export const AGENTS: AgentTarget[] = [
   {
     id: "claude-code",
     name: "Claude Code (user scope)",
-    configPath: join(HOME, ".claude.json"),
     key: "mcpServers",
     transport: "http",
     buildEntry: (ctx) => ({ type: "http", url: ctx.url, headers: bearer(ctx) }),
@@ -53,7 +53,6 @@ export const AGENTS: AgentTarget[] = [
   {
     id: "cursor",
     name: "Cursor",
-    configPath: join(HOME, ".cursor", "mcp.json"),
     key: "mcpServers",
     transport: "http",
     buildEntry: (ctx) => ({ url: ctx.url, headers: bearer(ctx) }),
@@ -61,7 +60,6 @@ export const AGENTS: AgentTarget[] = [
   {
     id: "windsurf",
     name: "Windsurf",
-    configPath: join(HOME, ".codeium", "windsurf", "mcp_config.json"),
     key: "mcpServers",
     transport: "http",
     buildEntry: (ctx) => ({ serverUrl: ctx.url, headers: bearer(ctx) }),
@@ -69,15 +67,71 @@ export const AGENTS: AgentTarget[] = [
   {
     id: "vscode",
     name: "VS Code (Copilot, user)",
-    configPath: join(APP_SUPPORT, "Code", "User", "mcp.json"),
     key: "servers",
     transport: "http",
     buildEntry: (ctx) => ({ type: "http", url: ctx.url, headers: bearer(ctx) }),
   },
 ];
 
+/** Windows Roaming AppData, from %APPDATA% or the conventional fallback. */
+function appDataDir(home: string, env: NodeJS.ProcessEnv): string {
+  return env.APPDATA || join(home, "AppData", "Roaming");
+}
+
+/** Linux XDG config root, from $XDG_CONFIG_HOME or the ~/.config default. */
+function xdgConfigDir(home: string, env: NodeJS.ProcessEnv): string {
+  return env.XDG_CONFIG_HOME || join(home, ".config");
+}
+
+/**
+ * Resolve an agent's config path for a given platform. Returns null when the
+ * agent has no well-known config location on that OS, so `--all` skips it
+ * instead of writing a bogus tree (e.g. a macOS `~/Library/...` path on Linux).
+ *
+ * The `platform`/`home`/`env` params default to the current process and exist
+ * so the branch selection can be unit-tested; at runtime `join` uses the native
+ * path separator, which always matches `process.platform`.
+ */
+export function resolveConfigPath(
+  id: string,
+  platform: NodeJS.Platform = process.platform,
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  switch (id) {
+    // Per-OS application config directories.
+    case "claude-desktop":
+      if (platform === "darwin")
+        return join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json");
+      if (platform === "win32") return join(appDataDir(home, env), "Claude", "claude_desktop_config.json");
+      if (platform === "linux") return join(xdgConfigDir(home, env), "Claude", "claude_desktop_config.json");
+      return null;
+    case "vscode":
+      if (platform === "darwin")
+        return join(home, "Library", "Application Support", "Code", "User", "mcp.json");
+      if (platform === "win32") return join(appDataDir(home, env), "Code", "User", "mcp.json");
+      if (platform === "linux") return join(xdgConfigDir(home, env), "Code", "User", "mcp.json");
+      return null;
+    // Home-relative dotfiles: identical layout on every OS.
+    case "claude-code":
+      return join(home, ".claude.json");
+    case "cursor":
+      return join(home, ".cursor", "mcp.json");
+    case "windsurf":
+      return join(home, ".codeium", "windsurf", "mcp_config.json");
+    default:
+      return null;
+  }
+}
+
+export const AGENTS: AgentTarget[] = AGENT_DEFS.map((def) => ({
+  ...def,
+  configPath: resolveConfigPath(def.id),
+}));
+
 /** True when the agent looks installed (its config or parent app dir exists). */
 export function detected(t: AgentTarget): boolean {
+  if (!t.configPath) return false;
   return existsSync(t.configPath) || existsSync(dirname(t.configPath));
 }
 
@@ -86,18 +140,22 @@ export function installInto(
   serverName: string,
   entry: Record<string, unknown>,
 ): { created: boolean } {
-  const created = !existsSync(target.configPath);
+  const { configPath } = target;
+  if (!configPath) {
+    throw new Error(`${target.name} has no config location on ${process.platform}`);
+  }
+  const created = !existsSync(configPath);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let json: any = {};
   if (!created) {
-    const raw = readFileSync(target.configPath, "utf8").trim();
+    const raw = readFileSync(configPath, "utf8").trim();
     if (raw) {
       try {
         json = JSON.parse(raw);
       } catch {
         // Never clobber an existing config we can't parse.
-        throw new Error(`existing config at ${target.configPath} is not valid JSON; left untouched`);
+        throw new Error(`existing config at ${configPath} is not valid JSON; left untouched`);
       }
     }
   }
@@ -105,8 +163,8 @@ export function installInto(
   if (!json[target.key] || typeof json[target.key] !== "object") json[target.key] = {};
   json[target.key][serverName] = entry;
 
-  mkdirSync(dirname(target.configPath), { recursive: true });
-  writeFileSync(target.configPath, JSON.stringify(json, null, 2) + "\n", "utf8");
+  mkdirSync(dirname(configPath), { recursive: true });
+  writeFileSync(configPath, JSON.stringify(json, null, 2) + "\n", "utf8");
   return { created };
 }
 
@@ -120,6 +178,10 @@ export function runInstall(opts: { entryJs: string; all?: boolean }): { lines: s
   };
   const lines: string[] = [];
   for (const t of AGENTS) {
+    if (!t.configPath) {
+      lines.push(`·  ${t.name}: not available on ${process.platform} (skipped)`);
+      continue;
+    }
     if (!opts.all && !detected(t)) {
       lines.push(`·  ${t.name}: not detected (skipped; use --all to force)`);
       continue;

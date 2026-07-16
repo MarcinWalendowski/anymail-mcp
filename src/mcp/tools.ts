@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ok, fail } from "./result.js";
 import { assertWritable, loadAccounts, resolveEmail } from "../registry.js";
-import { hasAppPassword } from "../keychain.js";
+import { credentialStoreName, hasAppPassword } from "../keychain.js";
 import { getProvider } from "../providers/index.js";
 import { addAccount } from "../accounts.js";
 import type {
@@ -479,11 +479,12 @@ export function registerTools(server: McpServer): void {
     "add_account",
     {
       title: "Add a mail account",
-      description:
-        "Add and verify a mail account, storing its App Password in the macOS Keychain (never in the registry or logs). provider: gmail (default) | icloud | fastmail | imap. For 'imap' pass imapHost + smtpHost (ports default to 993 / 465, or 587 with smtpStartTls). SECURITY: the App Password is an argument to this call, so it passes through the agent's context and the MCP client's logs. For the most private path, add accounts in the app's GUI instead — there the password goes straight to the local engine and the model never sees it.",
+      description: `Add and verify a mail account, storing its App Password in the ${credentialStoreName()} (never in the registry or logs). provider: gmail (default) | icloud | fastmail | imap. For 'imap' pass imapHost + smtpHost (ports default to 993 / 465, or 587 with smtpStartTls). SECURITY: the App Password is an argument to this call, so it passes through the agent's context and the MCP client's logs. For the most private path, add accounts in the app's GUI instead; there the password goes straight to the local engine and the model never sees it.`,
       inputSchema: {
         email: z.string().describe("The account's email address."),
-        appPassword: z.string().describe("App Password / IMAP password. Stored only in the Keychain."),
+        appPassword: z
+          .string()
+          .describe(`App Password / IMAP password. Stored only in the ${credentialStoreName()}.`),
         provider: z
           .enum(["gmail", "icloud", "fastmail", "imap"])
           .optional()

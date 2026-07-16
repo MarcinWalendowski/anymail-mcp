@@ -6,14 +6,86 @@ on:
   pull_request:
 
 jobs:
-  typecheck:
-    runs-on: ubuntu-latest
+  ci:
+    name: build & smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+
+      # CLI smoke against an isolated fake home so we never touch the runner
+      # user's real registry, token file, or credential store. os.homedir()
+      # keys off HOME on POSIX and USERPROFILE on Windows.
+      - name: CLI smoke (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME="$(mktemp -d)"
+          node dist/index.js help
+          node dist/index.js token
+          test -f "$HOME/.anymail-mcp/server.json"
+          out="$(node dist/index.js list)"
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q "No accounts configured"
+
+      - name: CLI smoke (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $fake = Join-Path $env:RUNNER_TEMP ("anymail-" + [guid]::NewGuid().ToString())
+          New-Item -ItemType Directory -Path $fake | Out-Null
+          $env:USERPROFILE = $fake
+          $env:APPDATA = Join-Path $fake "AppData\Roaming"
+          New-Item -ItemType Directory -Path $env:APPDATA -Force | Out-Null
+          node dist/index.js help
+          if ($LASTEXITCODE -ne 0) { throw "help exited $LASTEXITCODE" }
+          node dist/index.js token
+          if ($LASTEXITCODE -ne 0) { throw "token exited $LASTEXITCODE" }
+          $tokenFile = Join-Path $fake ".anymail-mcp\server.json"
+          if (-not (Test-Path $tokenFile)) { throw "token file missing: $tokenFile" }
+          $out = (node dist/index.js list | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "list exited $LASTEXITCODE" }
+          Write-Host $out
+          if ($out -notmatch "No accounts configured") { throw "unexpected list output: $out" }
+
+      # Native credential-store round-trip on the platforms that ship one out of
+      # the box: macOS Keychain and Windows Credential Manager. Linux is skipped
+      # below because the Secret Service backend needs a running
+      # gnome-keyring/KWallet under a D-Bus session, which GitHub's Linux runners
+      # do not provide (documented as a known limitation in
+      # docs/specs/003-cross-platform-cli.md).
+      - name: Keyring round-trip (macOS + Windows)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e '
+            import("@napi-rs/keyring").then(({ Entry }) => {
+              const service = "anymail-mcp-ci-test";
+              const account = "ci-" + Date.now() + "@example.com";
+              const secret = "rt-" + Math.random().toString(36).slice(2);
+              new Entry(service, account).setPassword(secret);
+              const got = new Entry(service, account).getPassword();
+              if (got !== secret) { console.error("mismatch: " + got); process.exit(1); }
+              new Entry(service, account).deletePassword();
+              let after = null;
+              try { after = new Entry(service, account).getPassword(); } catch { after = null; }
+              if (after) { console.error("not deleted: " + after); process.exit(1); }
+              console.log("keyring round-trip OK on " + process.platform);
+            }).catch((e) => { console.error(e); process.exit(1); });
+          '
+
+      - name: Keyring round-trip (Linux, skipped)
+        if: runner.os == 'Linux'
+        run: echo "Skipping keyring round-trip on Linux (needs Secret Service + D-Bus session). See docs/specs/003-cross-platform-cli.md."

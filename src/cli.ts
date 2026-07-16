@@ -7,6 +7,7 @@ import { closeAll } from "./providers/index.js";
 import type { ConnectionConfig, ProviderId } from "./providers/types.js";
 import { runInstall } from "./install.js";
 import { ensureServerConfig } from "./server-config.js";
+import { credentialStoreName } from "./keychain.js";
 
 const KNOWN_PROVIDERS: ProviderId[] = ["gmail", "icloud", "fastmail", "imap"];
 
@@ -111,9 +112,10 @@ async function readPassword(): Promise<string> {
 }
 
 function usage(): void {
+  const store = credentialStoreName();
   console.log(
     [
-      "AnyMail MCP — connect multiple Gmail accounts to your AI agent (IMAP/SMTP, App Passwords in Keychain)",
+      `AnyMail MCP: connect multiple Gmail accounts to your AI agent (IMAP/SMTP, App Passwords in the ${store})`,
       "",
       "Usage:",
       "  anymail-mcp                         Run the MCP server over stdio (how stdio agents launch it)",
@@ -127,7 +129,7 @@ function usage(): void {
       "  anymail-mcp list                    List configured accounts",
       "  anymail-mcp test [email]            Verify IMAP + SMTP login (default account if omitted)",
       "  anymail-mcp default <email>         Set the default account",
-      "  anymail-mcp remove <email>          Remove an account (Keychain + registry)",
+      `  anymail-mcp remove <email>          Remove an account (${store} + registry)`,
       "  anymail-mcp install [--all]         Register this MCP into detected agents",
       "  anymail-mcp token                   Print the local HTTP server URL + bearer token",
       "  anymail-mcp help                    This help",
@@ -177,7 +179,9 @@ export async function runCli(argv: string[]): Promise<void> {
           const mark = a.default ? "*" : " ";
           const prov = ` [${a.provider}]`;
           const ro = a.readOnly ? " (read-only)" : "";
-          const warn = a.credentialPresent ? "" : "  (⚠ no Keychain password — re-run add)";
+          const warn = a.credentialPresent
+            ? ""
+            : `  (⚠ no ${credentialStoreName()} password; re-run add)`;
           console.log(`${mark} ${a.email}${prov}${ro}${warn}`);
         }
         break;

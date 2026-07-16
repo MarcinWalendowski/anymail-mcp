@@ -18,6 +18,15 @@ everything but your agent.
 None of these are inside the repository, and `~/.anymail-mcp/` is ignored by git
 as a belt-and-suspenders measure.
 
+**Token file permissions.** On macOS and Linux the token file is written with
+POSIX mode `0600`, so only your user account can read it. Windows ignores POSIX
+mode bits, so after writing the file AnyMail MCP applies a best-effort ACL
+(`icacls <file> /inheritance:r /grant:r <you>:F`) that strips inherited
+permissions and grants only your account access. That hardening is best-effort:
+if it fails it is logged and never fatal, since the loopback bind and bearer
+token remain the primary defenses. Be aware that until it succeeds, the token
+file could be readable by other local users on that Windows machine.
+
 ## Local server hardening
 
 - **Loopback only** — binds `127.0.0.1`; it never listens on a routable

@@ -179,6 +179,10 @@ export async function runHttpServer(port: number = DEFAULT_PORT): Promise<void> 
     server.close();
     void closeAll().finally(() => process.exit(0));
   };
+  // POSIX signal cleanup. SIGINT (Ctrl+C) is delivered on all platforms; SIGTERM
+  // is effectively never raised on Windows, where the process is stopped by the
+  // supervisor or console close instead. The registration is harmless there, and
+  // nothing depends on SIGTERM firing for a correct shutdown.
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }
