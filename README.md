@@ -39,6 +39,12 @@ The menu-bar app is the no-terminal path: it supervises the engine, gives you an
    Keychain **Always Allow** prompt, click it once. (It re-prompts after each app
    update while builds are ad-hoc signed; a notarized release will end that.)
 
+That's the last DMG you'll download: the app **updates itself** (it checks on
+launch, every 6 hours, and when you open the menu, and installs updates
+automatically; there's also a "Check for Updates" item in the menu). Updates
+are cryptographically verified against a key pinned in the app, so only
+releases signed by the maintainer are ever installed.
+
 ![The Add Mail Account window: email, provider picker, password, and a copyable prompt for creating an App Password](assets/screenshots/add-account.png)
 
 The Add Account window covers **Gmail, iCloud, Fastmail, or a custom IMAP host**

@@ -7,6 +7,16 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **The app updates itself.** Sparkle 2 is built in: the app checks for updates on
+  launch, every 6 hours, and whenever you open it (clicking the menu-bar icon or
+  re-opening the app; throttled, and silent unless an update exists), then
+  downloads and installs them automatically: the DMG you download is the last one
+  you fetch by hand. A "Check for Updates… (v…)" item in the menu-bar menu
+  triggers a manual check.
+  Updates are EdDSA-signature-verified against a key pinned in the app, so only
+  builds signed by the maintainer are ever installed (this holds even while the
+  app itself is ad-hoc signed). The feed is `appcast.xml` on `main`; the update
+  payloads are the normal release DMGs. Design: `docs/specs/005-auto-update.md`.
 - **Downloadable universal DMG with a bundled Node runtime.** The menu-bar app now
   ships a pinned, universal (Apple Silicon + Intel) Node runtime and the built engine
   inside the `.app`, so it runs on any recent Mac with no Node and no Homebrew

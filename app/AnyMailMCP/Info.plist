@@ -4,11 +4,30 @@
 <dict>
   <!--
     Seed Info.plist. GENERATE_INFOPLIST_FILE fills in the standard keys
-    (identifier, versions, LSUIElement, copyright) on top of this; we only need
-    to carry CFBundleIconFile, which Xcode's generator does not expose as an
-    INFOPLIST_KEY_* setting. Points at the committed Resources/AppIcon.icns.
+    (identifier, versions, LSUIElement, copyright) on top of this; this file
+    carries only the keys Xcode's generator does not expose as INFOPLIST_KEY_*
+    settings: the icon, and the Sparkle auto-update configuration.
   -->
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
+
+  <!--
+    Sparkle auto-updates (docs/specs/005-auto-update.md). The feed is the
+    appcast.xml committed on main; release DMGs are the enclosures. Updates
+    are verified against SUPublicEDKey (the matching private key lives only
+    in the maintainer's Keychain), which is what makes auto-update safe while
+    builds are ad-hoc signed.
+  -->
+  <key>SUFeedURL</key>
+  <string>https://raw.githubusercontent.com/MarcinWalendowski/anymail-mcp/main/appcast.xml</string>
+  <key>SUPublicEDKey</key>
+  <string>Y3AFJeNzr3Zvqb/Z8bh9+eSdhqyIxLkZEgsUwy56Y54=</string>
+  <key>SUEnableAutomaticChecks</key>
+  <true/>
+  <key>SUAutomaticallyUpdate</key>
+  <true/>
+  <!-- check on launch and every 6 hours -->
+  <key>SUScheduledCheckInterval</key>
+  <integer>21600</integer>
 </dict>
 </plist>

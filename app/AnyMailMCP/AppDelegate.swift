@@ -1,18 +1,27 @@
 import AppKit
+import Sparkle
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let admin = AdminClient()
     private var supervisor: EngineSupervisor?
     private var accounts: [Account] = []
     private var addWindow: AddAccountWindowController?
+    private var updater: SPUStandardUpdaterController?
+    private var lastBackgroundUpdateCheck: Date = .distantPast
 
     nonisolated override init() {
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Sparkle: checks for updates on launch and every SUScheduledCheckInterval,
+        // downloading and installing them automatically (Info.plist keys).
+        updater = SPUStandardUpdaterController(
+            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil
+        )
+
         let nodeOverride = UserDefaults.standard.string(forKey: "nodePath")
         let engineOverride = UserDefaults.standard.string(forKey: "enginePath")
         if let node = NodeLocator.find(override: nodeOverride),
@@ -46,6 +55,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         supervisor?.stop()
     }
 
+    // Re-opening the running app (Finder / Spotlight) also checks for updates.
+    func applicationShouldHandleReopen(_ sender: NSApplication,
+                                       hasVisibleWindows: Bool) -> Bool {
+        backgroundUpdateCheck()
+        return true
+    }
+
+    // MARK: - Updates
+
+    // Silent check, on top of Sparkle's launch + scheduled checks: fires when
+    // the user "opens" the app (menu-bar click or app reopen). Background
+    // checks show UI only when an update actually exists; throttled so
+    // repeated clicks don't hammer the feed.
+    private func backgroundUpdateCheck() {
+        guard let updater = updater?.updater, !updater.sessionInProgress else { return }
+        guard Date().timeIntervalSince(lastBackgroundUpdateCheck) > 15 * 60 else { return }
+        lastBackgroundUpdateCheck = Date()
+        updater.checkForUpdatesInBackground()
+    }
+
+    nonisolated func menuWillOpen(_ menu: NSMenu) {
+        Task { @MainActor in self.backgroundUpdateCheck() }
+    }
+
     // MARK: - Data
 
     private func refreshAccounts(retries: Int = 12) {
@@ -68,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func rebuildMenu() {
         let menu = NSMenu()
+        menu.delegate = self
 
         let running = supervisor?.running ?? false
         let statusText = supervisor == nil
@@ -110,6 +144,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(login)
 
         menu.addItem(.separator())
+
+        if let updater {
+            let version = Bundle.main
+                .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+            let check = NSMenuItem(
+                title: "Check for Updates… (v\(version))",
+                action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+                keyEquivalent: ""
+            )
+            check.target = updater
+            menu.addItem(check)
+        }
+
         menu.addItem(item("Quit AnyMail MCP", #selector(quit), key: "q"))
 
         statusItem.menu = menu

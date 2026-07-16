@@ -4,10 +4,16 @@ options:
   createIntermediateGroups: true
   deploymentTarget:
     macOS: "13.0"
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.0
 targets:
   AnyMailMCP:
     type: application
     platform: macOS
+    dependencies:
+      - package: Sparkle
     sources:
       - path: AnyMailMCP
         excludes:

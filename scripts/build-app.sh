@@ -90,6 +90,22 @@ if [ -n "${DEVELOPER_ID:-}" ]; then
       --entitlements "${APPDIR}/AnyMailMCP/engine.entitlements" \
       --sign "$DEVELOPER_ID" "${ENG}/bin/node" >&2
   fi
+  # Sparkle ships XPC services and helper apps inside the framework; Sparkle's
+  # documented re-sign order is those first, then the framework, then the app.
+  SPARKLE="${APP}/Contents/Frameworks/Sparkle.framework"
+  if [ -d "$SPARKLE" ]; then
+    log "    sign Sparkle.framework internals"
+    codesign --force --timestamp --options runtime --preserve-metadata=entitlements \
+      --sign "$DEVELOPER_ID" "${SPARKLE}/Versions/B/XPCServices/Downloader.xpc" >&2
+    codesign --force --timestamp --options runtime \
+      --sign "$DEVELOPER_ID" "${SPARKLE}/Versions/B/XPCServices/Installer.xpc" >&2
+    codesign --force --timestamp --options runtime \
+      --sign "$DEVELOPER_ID" "${SPARKLE}/Versions/B/Autoupdate" >&2
+    codesign --force --timestamp --options runtime \
+      --sign "$DEVELOPER_ID" "${SPARKLE}/Versions/B/Updater.app" >&2
+    codesign --force --timestamp --options runtime \
+      --sign "$DEVELOPER_ID" "$SPARKLE" >&2
+  fi
   log "    sign app (last)"
   codesign --force --timestamp --options runtime \
     --entitlements "${APPDIR}/AnyMailMCP/AnyMailMCP.entitlements" \
