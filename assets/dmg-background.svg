@@ -1,50 +1,60 @@
 <svg width="600" height="400" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
   <!--
-    DMG installer background for AnyMail MCP. Rasterize to PNG (600x400 @1x,
-    1200x800 @2x) with: rsvg-convert -w 600 -h 400 dmg-background.svg -o bg.png
-    create-dmg places the app icon at (150,190) and /Applications at (450,190);
-    this art fills the space around those slots: title on top, an arrow between.
+    DMG installer background for AnyMail MCP. Rasterized to PNG at 600x400 (@1x)
+    and 1200x800 (@2x) by scripts/make-dmg.sh, which combines both into a
+    multi-representation TIFF so Finder picks the retina one.
 
-    The canvas is deliberately LIGHT: Finder renders a window with a custom
-    background picture in light appearance regardless of the system theme, so
-    the filename labels under the two icons are always black. A dark canvas
-    makes them unreadable; a light one works everywhere.
+    Layout constraints:
+    - create-dmg places the app icon at (150,190) and /Applications at (450,190),
+      icon size 112 - so x 94..206 and 394..506 around y 134..246 are icon area,
+      and the filename labels sit just below (~y 250..272).
+    - The label zone must stay LIGHT: Finder renders a window with a custom
+      background picture in light appearance regardless of the system theme, so
+      the labels are always black. The top band can be bold; the body cannot.
+    - Gradient-stroked <line> elements rasterize to nothing in rsvg-convert
+      (zero-height object bounding box), so strokes here use solid colors.
   -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#fbfdfe"/>
-      <stop offset="1" stop-color="#e8f1f4"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#0891b2"/>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0e7490"/>
+      <stop offset="0.55" stop-color="#0891b2"/>
       <stop offset="1" stop-color="#0d9488"/>
     </linearGradient>
-    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="5" refY="4" orient="auto">
-      <path d="M0,0 L8,4 L0,8 Z" fill="#0d9488"/>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6fafc"/>
+      <stop offset="1" stop-color="#dfecf1"/>
+    </linearGradient>
+    <marker id="arrowhead" markerWidth="7" markerHeight="7" refX="4.5" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z" fill="#0d9488"/>
     </marker>
   </defs>
 
-  <rect width="600" height="400" fill="url(#bg)"/>
+  <!-- body -->
+  <rect width="600" height="400" fill="url(#body)"/>
 
-  <!-- subtle envelope motif, top-left, low opacity -->
-  <g opacity="0.08" stroke="#0f172a" stroke-width="3" fill="none">
-    <rect x="30" y="30" width="70" height="48" rx="6"/>
-    <path d="M30 36 L65 60 L100 36"/>
+  <!-- header band: bold, branded; sits well above the icon/label zone -->
+  <rect width="600" height="112" fill="url(#band)"/>
+
+  <!-- envelope glyph in the band -->
+  <g stroke="#ffffff" stroke-width="4" fill="none" opacity="0.9">
+    <rect x="34" y="34" width="66" height="44" rx="7"/>
+    <path d="M34 40 L67 63 L100 40"/>
   </g>
 
-  <!-- wordmark -->
-  <text x="300" y="66" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif"
-        font-size="30" font-weight="700" fill="#0f172a">AnyMail<tspan fill="url(#accent)"> MCP</tspan></text>
-  <text x="300" y="94" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif"
-        font-size="13" fill="#475569">Multi-account email for your AI agent</text>
+  <!-- wordmark on the band -->
+  <text x="300" y="58" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif"
+        font-size="32" font-weight="800" fill="#ffffff">AnyMail MCP</text>
+  <text x="300" y="88" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif"
+        font-size="14" fill="#ffffff" opacity="0.92">Multi-account email for your AI agent</text>
 
-  <!-- drag arrow between the app icon (left) and Applications (right) -->
-  <line x1="228" y1="190" x2="368" y2="190" stroke="url(#accent)" stroke-width="5"
+  <!-- drag arrow between the app icon (left) and Applications (right);
+       the label sits clearly below the arrow so they never collide -->
+  <line x1="225" y1="190" x2="360" y2="190" stroke="#0d9488" stroke-width="6"
         stroke-linecap="round" marker-end="url(#arrowhead)"/>
-  <text x="300" y="228" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif"
-        font-size="12" fill="#475569">drag to install</text>
+  <text x="300" y="232" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif"
+        font-size="14" font-weight="600" fill="#0f766e">drag to install</text>
 
-  <!-- footer hint -->
-  <text x="300" y="372" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif"
-        font-size="11" fill="#64748b">After installing, open AnyMail MCP and add your accounts.</text>
+  <!-- footer hint: kept high enough to survive any window-chrome cropping -->
+  <text x="300" y="330" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif"
+        font-size="12" fill="#475569">After installing, open AnyMail MCP and add your accounts.</text>
 </svg>

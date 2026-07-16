@@ -30,11 +30,14 @@ APP_NAME="$(basename "$APP")"
 BG_DIR="$(mktemp -d)"
 BG=""
 
-# Rasterize the SVG background to @1x + @2x (create-dmg auto-selects the retina one).
+# Rasterize the SVG background at @1x + @2x and combine them into a single
+# multi-representation TIFF, so Finder shows a crisp image on retina displays
+# (a bare @1x PNG gets pixel-doubled and looks blurry).
 if command -v rsvg-convert >/dev/null; then
-  BG="$BG_DIR/background.png"
-  rsvg-convert -w 600  -h 400 "$SVG" -o "$BG"
+  rsvg-convert -w 600  -h 400 "$SVG" -o "$BG_DIR/background.png"
   rsvg-convert -w 1200 -h 800 "$SVG" -o "$BG_DIR/background@2x.png"
+  BG="$BG_DIR/background.tiff"
+  tiffutil -cathidpicheck "$BG_DIR/background.png" "$BG_DIR/background@2x.png" -out "$BG"
 else
   echo "note: rsvg-convert not found (brew install librsvg); building a plain DMG background."
 fi
@@ -44,7 +47,10 @@ rm -f "$OUT"
 ARGS=(
   --volname "AnyMail MCP"
   --window-pos 200 120
-  --window-size 600 400
+  # create-dmg window-size includes the ~28pt title bar, so 600x428 gives a
+  # 600x400 content area that matches the background art exactly (600x400
+  # here would crop the bottom 28px of the art).
+  --window-size 600 428
   --icon-size 112
   --icon "$APP_NAME" 150 190
   --app-drop-link 450 190
