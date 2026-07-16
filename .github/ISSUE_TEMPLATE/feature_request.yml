@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest a new capability or an improvement.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem or use case, not just the proposed solution.
+      placeholder: I want my agent to ... but today it can't because ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you would like to see. Optional.
+    validations:
+      required: false
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which part?
+      options:
+        - CLI / engine
+        - Menu-bar app (macOS)
+        - A new provider
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, prior art, or anything else. Optional.
+    validations:
+      required: false

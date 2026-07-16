@@ -1,0 +1,71 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please do NOT paste App Passwords, bearer tokens, or
+        raw email contents. For a security vulnerability, use a private advisory
+        instead (see SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected, and what happened instead.
+      placeholder: I ran ... and expected ..., but ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: App or CLI?
+      options:
+        - CLI / engine
+        - Menu-bar app (macOS)
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "From `node dist/index.js --version`, the app's About box, or the release tag."
+      placeholder: v0.0.1-rc.3
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Mail provider (if relevant)
+      placeholder: Gmail / iCloud / Fastmail / other IMAP host
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "Relevant stderr output (secrets are redacted, but double-check before pasting)."
+      render: shell
+    validations:
+      required: false

@@ -6,18 +6,55 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Downloadable universal DMG with a bundled Node runtime.** The menu-bar app now
+  ships a pinned, universal (Apple Silicon + Intel) Node runtime and the built engine
+  inside the `.app`, so it runs on any recent Mac with no Node and no Homebrew
+  installed. The Swift launcher prefers this bundled runtime over a system Node, and
+  falls back to a system Node only when the bundle is absent. Build it with a single
+  command (`npm run app:dmg`), which produces `AnyMail-MCP-<version>-universal.dmg`.
+  The DMG is ad-hoc signed for now (first launch needs the Gatekeeper "Open Anyway"
+  path); the Developer ID signing and notarization pipeline is wired and switches on
+  automatically once the maintainer supplies a certificate.
+- **App icon.** A dedicated envelope mark (`assets/app-icon.svg`, rendered to
+  `AppIcon.icns` by `scripts/make-icon.sh`), used as both the app icon and the DMG
+  volume icon, in the same palette as the DMG background art.
+- **One-line build and setup scripts.** `npm run setup` takes a clean checkout to a
+  built CLI/engine (`scripts/setup-cli.sh`, with `--install-agents` to also register
+  the server into detected agents); `npm run app:build` builds the app
+  (`scripts/build-app.sh [--bundled]`); `npm run app:dmg` builds the universal DMG.
+  A new `scripts/stage-engine.sh` assembles the self-contained engine payload
+  (universal `node`, production deps, both keyring addons) and self-smoke-tests it.
+- **`--show-add-account` launch flag** on the app: opens the Add Account window on
+  launch, so UI QA and screenshots do not require clicking through the menu-bar item.
+- **Windows and Linux support for the CLI and engine**: per-OS agent config paths,
+  native credential-store naming, and a best-effort Windows ACL on the local token file.
+- CI builds and runs a CLI smoke test on Ubuntu, macOS, and Windows, plus a native
+  credential-store round-trip on macOS and Windows.
+- **GitHub issue and PR templates**: a bug-report form and a feature-request form
+  (with an "app or CLI?" field), a config that routes security reports to a private
+  advisory, and a pull-request checklist (typecheck, changelog, docs, no secrets).
+
 ### Changed
+- **Docs overhaul.** The README is restructured quickstart-first: the app download
+  (DMG install + Gatekeeper steps) and the one-line CLI setup are now above the fold,
+  with the reference material below. `DISTRIBUTION.md` moved to `docs/DISTRIBUTION.md`,
+  and security / signing / notarization content is de-duplicated so each topic has a
+  single owner doc.
+- Credential-store error messages, CLI help, and `add_account` tool descriptions now
+  name the platform's store (macOS Keychain / Windows Credential Manager / Linux
+  Secret Service) instead of always saying "Keychain".
 - **The app's "Create an App Password" assistant is now one copyable prompt.** It used
   to be a stack of buttons that copied a hidden, Gmail-only prompt and opened a specific
   vendor (Claude for Chrome / ChatGPT / Claude.ai). Now the prompt is shown in the window
-  — truncated, scrollable, with a **Copy Prompt** button — and you paste it into whatever
+  (truncated, scrollable, with a **Copy Prompt** button) and you paste it into whatever
   agent you already use, rather than one we picked for you. It's readable *before* you
   trust it with a credential.
 
   The prompt now also does the whole job: it tells the agent to create the App Password
   **and** register the account via the `add_account` MCP tool, so one paste finishes the
   setup with nothing to type back. It fills in from the email/provider/hosts in the form
-  and is provider-aware — Gmail, iCloud, Fastmail and custom IMAP each get their own
+  and is provider-aware: Gmail, iCloud, Fastmail and custom IMAP each get their own
   route and preconditions, where previously every prompt said "Gmail". The manual path
   (**Open <provider>'s page** → paste the code into the field) is unchanged and still the
   private one: the window notes inline that routing through an agent puts the password in
@@ -26,11 +63,14 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 - The Add Account window sizes itself to its content instead of two hardcoded heights,
   so showing the custom-IMAP fields or a long error can no longer clip it.
+- `install --all` no longer writes a macOS `~/Library` config tree on Linux or Windows;
+  Claude Desktop and VS Code configs resolve to the correct per-OS locations.
 
 ### Planned
 - OAuth sign-in as an alternative to App Passwords.
-- Microsoft 365 / Outlook provider (needs OAuth — basic-auth IMAP is being retired).
-- Self-contained engine (bundled/compiled Node) + signed & notarized DMG + Homebrew.
+- Microsoft 365 / Outlook provider (needs OAuth, since basic-auth IMAP is being retired).
+- Developer ID signing + notarization of the DMG (the pipeline is wired; it needs the
+  maintainer's certificate), then Homebrew distribution.
 - `npm`/`npx` distribution for the CLI/engine.
 
 ## [0.0.1-rc.2] - 2026-07-15

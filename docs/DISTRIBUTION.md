@@ -7,9 +7,20 @@ the App Sandbox, which forbids the two things this app does by design: spawn a
 everything below is the notarized-download path.
 
 This is the **complete spec + runbook**, ordered by what unblocks what. It ships two
-things from one codebase: the **menu-bar app** (a signed DMG) and the **CLI/engine**
+things from one codebase: the **menu-bar app** (a DMG) and the **CLI/engine**
 (npm / Homebrew / standalone binary). The one item that makes "download and run"
-actually true for a non-technical user is [step 1](#1-self-contained-engine-the-real-blocker-) — do it first.
+actually true for a non-technical user is [step 1](#1-self-contained-engine-the-real-blocker-), which is now done.
+
+> **Current status (as of v0.0.1-rc.3).** Step 1 (self-contained engine) shipped
+> via **Option B**: a pinned, universal Node runtime plus the built engine and
+> production `node_modules` are bundled inside the `.app`, so it runs on any recent
+> Mac with no prerequisites. The universal DMG and app icon ([step 3](#3-the-dmg--app-icon))
+> also ship. The chosen strategy is **ad-hoc signing now, Developer ID signing +
+> notarization later**: the pipeline is env-driven, so setting `DEVELOPER_ID`
+> switches it onto the notarized path with no code change ([step 2](#2-code-signing--notarization-required-to-open-without-warnings)).
+> Until then, first launch needs the Gatekeeper "Open Anyway" step. The self-contained
+> engine design lives in [`specs/001-self-contained-app-and-dmg.md`](specs/001-self-contained-app-and-dmg.md);
+> the build scripts are in [`specs/002-one-line-build-and-setup.md`](specs/002-one-line-build-and-setup.md).
 
 ---
 
@@ -28,8 +39,8 @@ versus what is code and tooling:
 > require *you* are the accounts and secrets in
 > [Prerequisites](#prerequisites-maintainer-must-provide-) plus the design/publish
 > decisions flagged 🧑 inline. Everything else is buildable ahead of time and just
-> waits on those. None of it is needed for personal use — a self-built, unsigned
-> app already runs on your own Mac (see [`app/BUILD.md`](app/BUILD.md)); signing +
+> waits on those. None of it is needed for personal use, a self-built
+> app already runs on your own Mac (see [`app/BUILD.md`](../app/BUILD.md)); signing +
 > notarization only matter for *distributing to other people*.
 
 ---
@@ -52,38 +63,37 @@ environment — they're tied to your identity and payment.
 
 ---
 
-## 1. Self-contained engine (the real blocker) 🚨 🤖
+## 1. Self-contained engine (the real blocker) ✅ 🤖
 
-Today the menu-bar app runs the user's **system `node dist/index.js`** (see
-`app/AnyMailMCP/NodeLocator.swift` → `EnginePaths.entry`, which currently falls back to
-the `~/loki-labs/anymail-mcp` dev checkout). A downloaded app cannot assume Node is
-installed — that's the same "it doesn't just work" trap as an unsigned app hitting
-Gatekeeper. The engine must ship *inside* the `.app`.
+**Done.** The menu-bar app used to run the user's **system `node dist/index.js`** (see
+`app/AnyMailMCP/NodeLocator.swift` and `EnginePaths.entry`, which fell back to the
+`~/loki-labs/anymail-mcp` dev checkout). A downloaded app cannot assume Node is
+installed, the same "it doesn't just work" trap as an unsigned app hitting Gatekeeper.
+The engine now ships *inside* the `.app`.
 
-Two ways, pick one:
+**Option B was chosen** (bundle Node + `dist/` + `node_modules`). Option A (compile a
+single binary via Bun or Node SEA) was the alternative; Option B is simpler, needs no
+compile step, keeps `EngineSupervisor` spawning `node <entry> --http` unchanged, and
+sidesteps the native-addon inlining problem below. The full design is in
+[`specs/001-self-contained-app-and-dmg.md`](specs/001-self-contained-app-and-dmg.md).
 
-- [ ] **Option A — compile a single binary (recommended).** Produce a standalone
-      `anymail-engine` executable and bundle it at `Resources/engine/anymail-engine`.
-  - Bun: `bun build ./src/index.ts --compile --outfile anymail-engine`
-  - or **Node SEA** (`--experimental-sea-config`, Node 20+ single executable app).
-  - (Not `pkg` — it's archived/unmaintained.)
-- [ ] **Option B — bundle Node + `dist/` + `node_modules`** into `Resources/engine/`
-      and point `enginePath` there. Simpler, ~40 MB heavier, no compile step, and it
-      keeps `EngineSupervisor` spawning `node <entry> --http` unchanged (you bundle a
-      copy of the `node` binary and point `NodeLocator` at it).
-- [ ] **⚠️ Native addon caveat (the step most likely to bite).** `@napi-rs/keyring`
-      is a prebuilt `.node` binary. A compiled bundle (Option A) usually can't inline
-      it — copy the matching `keyring.darwin-{arm64,x64}.node` next to the binary and
-      confirm it loads at runtime on a clean Mac. This also interacts with signing —
-      see the library-validation note in [step 2](#2-code-signing--notarization-required-to-open-without-warnings).
-- [ ] Update `NodeLocator` / `EnginePaths` in the Swift app to **prefer the bundled
-      engine** over a system Node (the `EnginePaths.entry` lookup already has a
-      `Resources/engine/...` slot first — extend it for the compiled-binary layout,
-      and for Option B add a bundled-`node` candidate to `NodeLocator`).
-- [ ] Decide **arch coverage**: Apple-Silicon-only (`arm64`) is simplest; a universal
-      build (`arm64` + `x86_64`) covers Intel Macs but doubles the addon/binary work.
-- [ ] **Acceptance:** on a Mac with **no Node and no Homebrew** (a fresh user account
-      works), the app launches, the engine starts, and `add`/`test`/`search` succeed.
+- [x] **Option B, bundle Node + `dist/` + `node_modules`** into `Resources/engine/`.
+      `scripts/stage-engine.sh` assembles the staged engine; a post-build phase in
+      `app/project.yml` (gated on `BUNDLE_ENGINE=YES`) copies it into
+      `Contents/Resources/engine` before signing.
+- [x] **Native addon handled.** `@napi-rs/keyring` is a prebuilt `.node`; the staging
+      script grafts in the `darwin-x64` sibling so both arches resolve at runtime, and
+      leaves the addon unsigned in the ad-hoc build (re-signing would break library
+      validation, see [step 2](#2-code-signing--notarization-required-to-open-without-warnings)).
+- [x] `NodeLocator` / `EnginePaths` **prefer the bundled engine** over a system Node:
+      the bundled `Resources/engine/bin/node` candidate is inserted after the user
+      override but before the system paths.
+- [x] **Arch coverage: universal.** The DMG is one artifact for Apple Silicon and Intel;
+      the build downloads both official Node tarballs, verifies each against
+      `SHASUMS256.txt`, and `lipo`-merges them into a universal `bin/node`.
+- [x] **Acceptance:** on a Mac with no Node and no Homebrew, the app launches, the
+      bundled engine starts, and `add`/`test`/`search` succeed (verified on the rc.3
+      build).
 
 ## 2. Code signing + notarization (required to open without warnings) 🤝
 
@@ -169,14 +179,15 @@ JIT keys onto the app — they belong to the runtime binary.
 
 ## 3. The DMG + app icon
 
-### 3a. DMG (custom branded background) 🎨 🤖 — *tooling already in this repo*
-- [ ] `brew install create-dmg librsvg` (librsvg rasterizes the SVG background).
-- [ ] Background asset lives at **`assets/dmg-background.svg`**; the script exports it
+### 3a. DMG (custom branded background) ✅ 🎨 🤖
+- [x] `brew install create-dmg librsvg` (librsvg rasterizes the SVG background).
+- [x] Background asset lives at **`assets/dmg-background.svg`**; the script exports it
       to `@1x` (600×400) and `@2x` (1200×800) PNGs.
-- [ ] Build the DMG with **`scripts/make-dmg.sh "AnyMail MCP.app"`**: it lays out the
+- [x] Build the DMG with **`scripts/make-dmg.sh ["AnyMail MCP.app"]`**: it lays out the
       app icon on the left, a **/Applications** drop-link on the right, an arrow
-      between, the custom background, and the app icon as the volume icon. Pass
-      `DEVELOPER_ID=...` to sign the DMG too.
+      between, the custom background, and the app icon as the volume icon. With no app
+      path it builds a bundled universal app first. Pass `DEVELOPER_ID=...` to sign the
+      DMG too. Output is `AnyMail-MCP-<version>-universal.dmg`.
 
 ```
 ┌───────────────────────────────────────────────┐
@@ -189,13 +200,13 @@ JIT keys onto the app — they belong to the runtime binary.
 └───────────────────────────────────────────────┘
 ```
 
-### 3b. App icon 🧑 design → 🤖 wiring
-- [ ] **Decide the mark** (maintainer). Produce a 1024×1024 master.
-- [ ] **Wire it in** (automatable): add an `Assets.xcassets` with an `AppIcon` set to
-      the Xcode target (add it to `sources` in `project.yml`), and generate
-      `AppIcon.icns` so `make-dmg.sh` can use it as the DMG volume icon (it reads
-      `Contents/Resources/AppIcon.icns`, which doesn't exist yet — there's no asset
-      catalog in the project today).
+### 3b. App icon ✅ 🧑 design + 🤖 wiring
+- [x] **The mark** lives at `assets/app-icon.svg` (an envelope in the same palette as
+      the DMG background art).
+- [x] **Wired in**: `scripts/make-icon.sh` renders the SVG to every required size via
+      `rsvg-convert` + `iconutil`, producing `app/AnyMailMCP/AppIcon.icns` (committed,
+      so a contributor without librsvg can still build). `make-dmg.sh` uses it as the
+      DMG volume icon.
 
 ## 4. Auto-update (Sparkle) 🤖 code + 🧑 key custody
 - [ ] Add **Sparkle** (SwiftPM) to the target; publish an `appcast.xml` with
@@ -299,13 +310,13 @@ Step 6a npm fixes (🤖) ─► npm publish (🧑) ─► Step 5 Homebrew (🤝)
 ## Consolidated checklist (tagged)
 
 **Prereqs** 🧑 ☐ Apple Developer Program ☐ Developer ID cert ☐ notarytool key
-☐ npm account/token ☐ host for page+appcast ☐ app-icon decision ☐ keep Sparkle key
-**Engine** 🤖 ☐ compile/bundle self-contained engine ☐ ship `@napi-rs/keyring` `.node`
-☐ prefer bundled engine in the Swift locator ☐ arch coverage ☐ verify on a Node-less Mac
+☐ npm account/token ☐ host for page+appcast ☑ app-icon decision ☐ keep Sparkle key
+**Engine** ✅ 🤖 ☑ bundle self-contained engine (Option B) ☑ ship both `@napi-rs/keyring` `.node`
+☑ prefer bundled engine in the Swift locator ☑ universal arch coverage ☑ verify on a Node-less Mac
 **Signing** ☐ 🧑 install cert ☐ 🤖 `engine.entitlements` (JIT/library-validation) ☐ 🤖 inside-out sign (no `--deep`, `--timestamp`) ☐ 🤝 notarize+staple ☐ `spctl` passes
-**DMG/icon** ☐ 🤖 export background PNGs + `make-dmg.sh` ☐ 🧑 icon art ☐ 🤖 asset catalog + `.icns`
+**DMG/icon** ✅ ☑ 🤖 export background PNGs + `make-dmg.sh` ☑ 🧑 icon art ☑ 🤖 `.icns` + asset catalog
 **Update** ☐ 🤖 Sparkle appcast ☐ 🧑 custody EdDSA key
 **CLI** ☐ 🤖 `files:["dist"]` + `private:false` + `prepublishOnly` ☐ 🧑 `npm publish` ☐ 🤖 standalone binary ☐ 🤖 `install.sh` ☐ 🤝 Homebrew formula
 **Distribution** ☐ 🤝 Homebrew cask ☐ 🤖 download page ☐ 🤝 tag-driven CI release
 
-See [`RELEASING.md`](RELEASING.md) for the version-bump/tag/release flow this plugs into.
+See [`RELEASING.md`](../RELEASING.md) for the version-bump/tag/release flow this plugs into.
