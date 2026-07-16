@@ -1,0 +1,43 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    AnyMail MCP app icon. Same family as assets/dmg-background.svg: dark-slate
+    squircle, cyan→teal accent, light envelope. Rendered to AppIcon.icns by
+    scripts/make-icon.sh (rsvg-convert + iconutil). No text (unreadable at 16px).
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#2dd4bf"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#e2e8f0"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="envClip">
+      <rect x="252" y="334" width="520" height="356" rx="50"/>
+    </clipPath>
+  </defs>
+
+  <!-- squircle canvas (macOS icon grid: 824x824 content, 100px margin) -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sheen)"/>
+
+  <!-- envelope -->
+  <g clip-path="url(#envClip)">
+    <rect x="252" y="334" width="520" height="356" fill="url(#paper)"/>
+    <!-- flap -->
+    <path d="M252 334 L512 537 L772 334 Z" fill="url(#accent)"/>
+    <!-- fold line under the flap for depth -->
+    <path d="M252 334 L512 537 L772 334" fill="none" stroke="#0f172a" stroke-opacity="0.12" stroke-width="5"/>
+  </g>
+  <!-- crisp envelope edge -->
+  <rect x="252" y="334" width="520" height="356" rx="50" fill="none" stroke="#0f172a" stroke-opacity="0.16" stroke-width="5"/>
+</svg>

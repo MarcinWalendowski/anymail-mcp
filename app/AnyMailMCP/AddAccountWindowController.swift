@@ -175,7 +175,7 @@ final class AddAccountWindowController: NSWindowController, NSTextFieldDelegate 
         header.font = .boldSystemFont(ofSize: 12)
 
         let caption = wrapped(
-            "Paste this into any agent you use — it creates the App Password and adds the account here, in one go.",
+            "Paste this into any agent you use; it creates the App Password and adds the account here, in one go.",
             size: 11, color: .secondaryLabelColor, maxWidth: Self.contentWidth, lines: 2
         )
 
@@ -255,7 +255,7 @@ final class AddAccountWindowController: NSWindowController, NSTextFieldDelegate 
         copyToClipboard(taskPrompt())
         let previous = copyButton.title
         copyButton.title = "Copied"
-        setInfo("Prompt copied. Paste it into your agent — it will create the App Password and add the account for you.")
+        setInfo("Prompt copied. Paste it into your agent; it will create the App Password and add the account for you.")
         Task {
             try? await Task.sleep(nanoseconds: 1_600_000_000)
             copyButton.title = previous
@@ -270,7 +270,7 @@ final class AddAccountWindowController: NSWindowController, NSTextFieldDelegate 
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             setInfo("Pasted the password from your clipboard. Click Add to verify & save.")
         } else {
-            setInfo("Clipboard is empty — copy the password first.")
+            setInfo("Clipboard is empty. Copy the password first.")
         }
     }
 

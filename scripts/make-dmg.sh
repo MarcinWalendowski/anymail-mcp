@@ -3,20 +3,29 @@
 # Build a branded, notarizable DMG for AnyMail MCP.
 #
 #   Prereqs:  brew install create-dmg librsvg
-#   Usage:    scripts/make-dmg.sh "path/to/AnyMail MCP.app" [output.dmg]
+#   Usage:    scripts/make-dmg.sh ["path/to/AnyMail MCP.app"] [output.dmg]
+#             With no app path, builds a bundled universal app first
+#             (scripts/build-app.sh --bundled --configuration Release).
 #   Signing:  DEVELOPER_ID="Developer ID Application: NAME (TEAMID)" scripts/make-dmg.sh ...
 #
-# After this produces the DMG, notarize + staple it (see DISTRIBUTION.md step 2).
+# After this produces the DMG, notarize + staple it (see docs/DISTRIBUTION.md step 2).
 set -euo pipefail
 
-APP="${1:?Usage: make-dmg.sh <AnyMail MCP.app> [out.dmg]}"
-OUT="${2:-AnyMail MCP.dmg}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SVG="$ROOT/assets/dmg-background.svg"
+VERSION="$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo dev)"
 
 command -v create-dmg >/dev/null || { echo "Install create-dmg:  brew install create-dmg"; exit 1; }
+
+# App path: given as $1, or build a self-contained universal app now.
+APP="${1:-}"
+if [ -z "$APP" ]; then
+  echo "note: no app path given, building a bundled universal app..." >&2
+  APP="$("$ROOT/scripts/build-app.sh" --bundled --configuration Release | tail -n 1)"
+fi
 [ -d "$APP" ] || { echo "Not an .app bundle: $APP"; exit 1; }
 
+OUT="${2:-AnyMail-MCP-${VERSION}-universal.dmg}"
 APP_NAME="$(basename "$APP")"
 BG_DIR="$(mktemp -d)"
 BG=""
@@ -27,7 +36,7 @@ if command -v rsvg-convert >/dev/null; then
   rsvg-convert -w 600  -h 400 "$SVG" -o "$BG"
   rsvg-convert -w 1200 -h 800 "$SVG" -o "$BG_DIR/background@2x.png"
 else
-  echo "note: rsvg-convert not found (brew install librsvg) — building a plain DMG background."
+  echo "note: rsvg-convert not found (brew install librsvg); building a plain DMG background."
 fi
 
 rm -f "$OUT"
@@ -52,5 +61,6 @@ ICNS="$APP/Contents/Resources/AppIcon.icns"
 
 create-dmg "${ARGS[@]}" "$OUT" "$APP"
 
-echo "→ $OUT"
-echo "Next: xcrun notarytool submit \"$OUT\" --wait  &&  xcrun stapler staple \"$OUT\"  (see DISTRIBUTION.md)."
+SIZE="$(du -h "$OUT" | awk '{print $1}')"
+echo "→ $OUT (${SIZE})"
+echo "Next: xcrun notarytool submit \"$OUT\" --wait  &&  xcrun stapler staple \"$OUT\"  (see docs/DISTRIBUTION.md)."

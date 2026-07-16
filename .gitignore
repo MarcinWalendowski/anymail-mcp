@@ -15,3 +15,6 @@ app/DerivedData/
 .anymail-mcp/
 .env
 *.env
+
+# Release artifacts (built by scripts/make-dmg.sh)
+*.dmg

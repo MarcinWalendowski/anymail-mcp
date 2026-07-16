@@ -34,6 +34,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         rebuildMenu()
         refreshAccounts()
+
+        // QA affordance: open the Add Account window straight away so UI passes
+        // and screenshots don't require clicking through the menu-bar item.
+        if ProcessInfo.processInfo.arguments.contains("--show-add-account") {
+            addAccount()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

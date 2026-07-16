@@ -12,17 +12,47 @@ targets:
       - path: AnyMailMCP
         excludes:
           - "AnyMailMCP.entitlements"
+          - "engine.entitlements"
+          - "Info.plist"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lokilabs.AnyMailMCP
         PRODUCT_NAME: AnyMail MCP
         MARKETING_VERSION: "0.0.1"
-        CURRENT_PROJECT_VERSION: "2"
+        CURRENT_PROJECT_VERSION: "3"
         SWIFT_VERSION: "5.0"
         MACOSX_DEPLOYMENT_TARGET: "13.0"
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: AnyMailMCP/AnyMailMCP.entitlements
         ENABLE_HARDENED_RUNTIME: YES
+        # The bundle-engine script phase reads app/build/engine-staging, which is
+        # outside the derived-data sandbox, so user script sandboxing must be off.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # Seed plist carries CFBundleIconFile (not exposed as an INFOPLIST_KEY_*);
+        # GENERATE_INFOPLIST_FILE merges the standard keys on top of it.
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: AnyMailMCP/Info.plist
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: "Loki Labs"
+    postBuildScripts:
+      # Copy the staged self-contained engine into the app before Xcode's final
+      # code-sign (script phases run first), so the bundled runtime is sealed
+      # into the signature. Gated on BUNDLE_ENGINE=YES; a plain dev build skips
+      # it instantly and ships no engine. basedOnDependencyAnalysis:false forces
+      # it to run every build (no inputs/outputs to diff).
+      - name: Bundle self-contained engine
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "${BUNDLE_ENGINE:-NO}" != "YES" ]; then
+            echo "BUNDLE_ENGINE != YES — skipping engine copy (dev build)."
+            exit 0
+          fi
+          STAGING="${SRCROOT}/build/engine-staging"
+          if [ ! -d "$STAGING" ]; then
+            echo "error: BUNDLE_ENGINE=YES but $STAGING is missing. Run scripts/stage-engine.sh first." >&2
+            exit 1
+          fi
+          DEST="${CODESIGNING_FOLDER_PATH}/Contents/Resources/engine"
+          mkdir -p "$DEST"
+          rsync -a --delete "$STAGING/" "$DEST/"
+          echo "Bundled engine → $DEST"

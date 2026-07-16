@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Seed Info.plist. GENERATE_INFOPLIST_FILE fills in the standard keys
+    (identifier, versions, LSUIElement, copyright) on top of this; we only need
+    to carry CFBundleIconFile, which Xcode's generator does not expose as an
+    INFOPLIST_KEY_* setting. Points at the committed Resources/AppIcon.icns.
+  -->
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+</dict>
+</plist>

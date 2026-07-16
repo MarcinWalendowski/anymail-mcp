@@ -12,6 +12,13 @@ enum NodeLocator {
     static func find(override: String?) -> String? {
         let fm = FileManager.default
         if let o = override, !o.isEmpty, fm.isExecutableFile(atPath: o) { return o }
+
+        // Runtime bundled inside the .app (Resources/engine/bin/node). Preferred
+        // over any system Node so a downloaded app needs no prerequisites; the
+        // user override above still wins for developers pointing at their own.
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("engine/bin/node").path,
+           fm.isExecutableFile(atPath: bundled) { return bundled }
+
         for c in candidates where fm.isExecutableFile(atPath: c) { return c }
 
         // nvm: newest installed version
