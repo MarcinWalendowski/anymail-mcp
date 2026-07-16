@@ -2,12 +2,21 @@ import AppKit
 
 /// Add-account form: email + password (+ provider, name, flags) → POST /admin/accounts.
 /// Supports Gmail (default), iCloud, Fastmail, and a Custom IMAP account with its own
-/// hosts/ports. Also hosts the "Create an App Password" assistant, which hands the
-/// browser work off to the user's own browser or an AI agent rather than automating
-/// Google's page itself. The password is posted straight to the local engine (which
-/// stores it in the Keychain) — the model never sees it, unlike the MCP add_account tool.
+/// hosts/ports.
+///
+/// Below the form are the two ways to get an App Password. This app never automates the
+/// provider's page itself — it only opens it, or hands the job to an agent you choose:
+///
+///   - **Do it yourself** — the button opens the provider's page; paste the code into the
+///     field. The password goes straight to the local engine → Keychain, so no model ever
+///     sees it. This is the private path, and it stays one button away.
+///   - **Hand it to your agent** — copy the prompt into any agent you already use. It
+///     creates the App Password *and* registers the account via the `add_account` MCP
+///     tool, so one paste finishes the job with nothing to type back. The cost is privacy:
+///     the password becomes a tool-call argument, so it passes through the model's context
+///     and the MCP client's logs. The prompt and the caption both say so.
 @MainActor
-final class AddAccountWindowController: NSWindowController {
+final class AddAccountWindowController: NSWindowController, NSTextFieldDelegate {
     private let admin: AdminClient
     private let onDone: @MainActor () -> Void
 
@@ -26,15 +35,20 @@ final class AddAccountWindowController: NSWindowController {
     private let statusLabel = NSTextField(labelWithString: "")
     private let addButton = NSButton(title: "Add Account", target: nil, action: nil)
 
-    private static let appPasswordsURL = URL(string: "https://myaccount.google.com/apppasswords")!
-    private static let chatgptURL = URL(string: "https://chatgpt.com/")!
-    private static let claudeURL = URL(string: "https://claude.ai/")!
+    private let rootStack = NSStackView()
+    private let promptView = NSTextView()
+    private let promptScroll = NSScrollView()
+    private let copyButton = NSButton(title: "Copy Prompt", target: nil, action: nil)
+    private let openPageButton = NSButton(title: "", target: nil, action: nil)
+
+    private static let windowWidth: CGFloat = 470
+    private static let contentWidth: CGFloat = 430
 
     init(admin: AdminClient, onDone: @escaping @MainActor () -> Void) {
         self.admin = admin
         self.onDone = onDone
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 470, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: Self.windowWidth, height: 560),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -53,6 +67,7 @@ final class AddAccountWindowController: NSWindowController {
         emailField.placeholderString = "you@gmail.com"
         passField.placeholderString = "App Password / IMAP password"
         nameField.placeholderString = "Display name (optional)"
+        emailField.delegate = self
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byWordWrapping
         statusLabel.maximumNumberOfLines = 4
@@ -76,7 +91,7 @@ final class AddAccountWindowController: NSWindowController {
         providerPopup.action = #selector(providerChanged)
         buildIMAPFields()
 
-        let stack = NSStackView(views: [
+        rootStack.setViews([
             labeled("Email", emailField),
             labeled("Provider", providerPopup),
             imapFields,
@@ -84,22 +99,22 @@ final class AddAccountWindowController: NSWindowController {
             labeled("Name", nameField),
             defaultCheck,
             readOnlyCheck,
-            NSBox.horizontalSeparator(),
+            NSBox.horizontalSeparator(width: Self.contentWidth),
             createSection(),
             statusLabel,
             addButton,
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(stack)
+        ], in: .leading)
+        rootStack.orientation = .vertical
+        rootStack.alignment = .leading
+        rootStack.spacing = 8
+        rootStack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        rootStack.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(rootStack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: content.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            rootStack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            rootStack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            rootStack.topAnchor.constraint(equalTo: content.topAnchor),
+            rootStack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
         for field in [emailField, nameField] {
             field.widthAnchor.constraint(equalToConstant: 300).isActive = true
@@ -114,6 +129,8 @@ final class AddAccountWindowController: NSWindowController {
         imapPortField.placeholderString = "993"
         smtpHostField.placeholderString = "smtp.host.tld"
         smtpPortField.placeholderString = "465"
+        imapHostField.delegate = self
+        smtpHostField.delegate = self
         for f in [imapHostField, imapPortField, smtpHostField, smtpPortField] {
             f.widthAnchor.constraint(equalToConstant: 220).isActive = true
         }
@@ -143,70 +160,106 @@ final class AddAccountWindowController: NSWindowController {
     @objc private func providerChanged() { updateIMAPFields() }
 
     private func updateIMAPFields() {
-        let isCustom = providerId() == "imap"
-        imapFields.isHidden = !isCustom
-        window?.setContentSize(NSSize(width: 470, height: isCustom ? 700 : 520))
+        imapFields.isHidden = providerId() != "imap"
+        refreshPrompt()
+        resizeToFit()
     }
 
-    /// The "Create an App Password" assistant (Gmail-oriented — Google App Passwords).
-    /// Ordered safest-first: your own browser (no new exposure), then a local agent,
-    /// then cloud agents behind a blunt warning, since an App Password grants full,
-    /// unscoped mailbox access.
+    // MARK: - App Password section
+
+    /// One copyable prompt that does the whole job, plus the manual escape hatch.
+    /// The prompt is shown rather than hidden behind a button: it hands an agent a
+    /// full-mailbox credential, so it should be readable before it's trusted.
     private func createSection() -> NSView {
-        let header = NSTextField(labelWithString: "Don't have an App Password (Gmail)? Create one:")
+        let header = NSTextField(labelWithString: "Need an App Password?")
         header.font = .boldSystemFont(ofSize: 12)
 
-        let openPage = button("Open Google's App Passwords page", #selector(openAppPasswordsPage))
-
-        let orLabel = wrapped(
-            "…or have an AI agent do it — this copies a ready-to-run task prompt to your clipboard:",
-            size: 11, color: .secondaryLabelColor, maxWidth: 420, lines: 2
+        let caption = wrapped(
+            "Paste this into any agent you use — it creates the App Password and adds the account here, in one go.",
+            size: 11, color: .secondaryLabelColor, maxWidth: Self.contentWidth, lines: 2
         )
 
-        let claudeChrome = button("Claude for Chrome — on your Mac", #selector(handoffClaudeChrome))
-        claudeChrome.toolTip = "Copies the prompt and opens the page in Chrome. Runs in your own browser and session."
+        buildPromptView()
 
-        let chatgpt = button("ChatGPT", #selector(handoffChatGPT))
-        let claudeAI = button("Claude.ai", #selector(handoffClaudeAI))
-        let cloudRow = NSStackView(views: [chatgpt, claudeAI])
-        cloudRow.orientation = .horizontal
-        cloudRow.spacing = 6
+        copyButton.target = self
+        copyButton.action = #selector(copyPrompt)
+        copyButton.bezelStyle = .rounded
+        copyButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)
+        copyButton.imagePosition = .imageLeading
 
-        let warn = wrapped(
-            "⚠ Cloud agents sign into your Google account and create a full-mailbox password on a remote machine — not on your Mac. Prefer “Claude for Chrome” or your own browser.",
-            size: 10, color: .systemOrange, maxWidth: 420, lines: 3
+        openPageButton.target = self
+        openPageButton.action = #selector(openAppPasswordsPage)
+        openPageButton.bezelStyle = .rounded
+
+        let buttonRow = NSStackView(views: [copyButton, openPageButton])
+        buttonRow.orientation = .horizontal
+        buttonRow.spacing = 6
+
+        let note = wrapped(
+            "The agent sees a password that grants full access to this mailbox. To keep it private, create it yourself and paste it above instead.",
+            size: 10, color: .secondaryLabelColor, maxWidth: Self.contentWidth, lines: 3
         )
 
-        let box = NSStackView(views: [header, openPage, orLabel, claudeChrome, cloudRow, warn])
+        let box = NSStackView(views: [header, caption, promptScroll, buttonRow, note])
         box.orientation = .vertical
         box.alignment = .leading
         box.spacing = 6
         return box
     }
 
+    private func buildPromptView() {
+        promptView.isEditable = false
+        promptView.isSelectable = true
+        promptView.drawsBackground = false
+        promptView.font = .monospacedSystemFont(ofSize: 10.5, weight: .regular)
+        promptView.textColor = .secondaryLabelColor
+        promptView.textContainerInset = NSSize(width: 6, height: 6)
+        // Standard incantation for a text view that grows vertically inside a scroll view.
+        promptView.minSize = NSSize(width: 0, height: 0)
+        promptView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        promptView.isVerticallyResizable = true
+        promptView.isHorizontallyResizable = false
+        promptView.autoresizingMask = [.width]
+        promptView.textContainer?.widthTracksTextView = true
+
+        promptScroll.documentView = promptView
+        promptScroll.hasVerticalScroller = true
+        promptScroll.borderType = .bezelBorder
+        promptScroll.translatesAutoresizingMaskIntoConstraints = false
+        promptScroll.widthAnchor.constraint(equalToConstant: Self.contentWidth).isActive = true
+        // Deliberately shorter than the prompt: a preview to confirm what you're copying,
+        // scrollable for anyone who wants to read the whole thing first.
+        promptScroll.heightAnchor.constraint(equalToConstant: 96).isActive = true
+    }
+
+    /// Rebuilds the preview from the current email/provider/host fields.
+    private func refreshPrompt() {
+        promptView.string = taskPrompt()
+        let g = AppPasswordPrompt.guide(for: providerId())
+        openPageButton.isHidden = g.url == nil
+        openPageButton.title = "Open \(g.label)'s page"
+    }
+
+    func controlTextDidChange(_ obj: Notification) { refreshPrompt() }
+
     // MARK: - Assistant actions
 
     @objc private func openAppPasswordsPage() {
-        openURL(Self.appPasswordsURL, preferChrome: true)
-        setInfo("Opened Google's App Passwords page. Create one named “AnyMail MCP”, then paste the 16-char code above and click Add.")
+        let g = AppPasswordPrompt.guide(for: providerId())
+        guard let url = g.url else { return }
+        NSWorkspace.shared.open(url)
+        setInfo("Opened \(g.label)'s App Password page. Create one named “AnyMail MCP”, then paste the code above and click Add.")
     }
 
-    @objc private func handoffClaudeChrome() {
+    @objc private func copyPrompt() {
         copyToClipboard(taskPrompt())
-        openURL(Self.appPasswordsURL, preferChrome: true)
-        setInfo("Copied a task prompt. In Chrome, open the Claude side panel and paste it — Claude drives your own browser. Then paste the 16-char result above.")
-    }
-
-    @objc private func handoffChatGPT() {
-        copyToClipboard(taskPrompt())
-        openURL(Self.chatgptURL)
-        setInfo("Copied a task prompt & opened ChatGPT. Run it with a computer-using agent, then paste the 16-char password above. (Cloud — see the warning.)")
-    }
-
-    @objc private func handoffClaudeAI() {
-        copyToClipboard(taskPrompt())
-        openURL(Self.claudeURL)
-        setInfo("Copied a task prompt & opened Claude. Run it with a computer-using agent, then paste the 16-char password above. (Cloud — see the warning.)")
+        let previous = copyButton.title
+        copyButton.title = "Copied"
+        setInfo("Prompt copied. Paste it into your agent — it will create the App Password and add the account for you.")
+        Task {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            copyButton.title = previous
+        }
     }
 
     @objc private func pastePassword() {
@@ -221,30 +274,24 @@ final class AddAccountWindowController: NSWindowController {
         }
     }
 
-    /// The task handed to an agent (or a reminder for the manual flow). Prefilled
-    /// with the email if the user has typed it.
+    /// The one-paste task, prefilled from whatever's currently in the form.
     private func taskPrompt() -> String {
-        let email = emailField.stringValue.trimmingCharacters(in: .whitespaces)
-        let who = email.isEmpty ? "my Gmail account" : email
-        return """
-        Create a Gmail App Password for \(who).
-        1. Open https://myaccount.google.com/apppasswords
-        2. Sign in and finish 2-Step Verification if prompted (2-Step Verification must be ON).
-        3. Create a new app password named "AnyMail MCP".
-        4. Reply with ONLY the 16-character password (no spaces).
-        Keep it secret — it grants full access to this mailbox.
-        """
+        AppPasswordPrompt.text(
+            provider: providerId(),
+            email: emailField.stringValue.trimmingCharacters(in: .whitespaces),
+            imapHost: imapHostField.stringValue.trimmingCharacters(in: .whitespaces),
+            smtpHost: smtpHostField.stringValue.trimmingCharacters(in: .whitespaces)
+        )
     }
 
     // MARK: - Helpers
 
-    private func openURL(_ url: URL, preferChrome: Bool = false) {
-        if preferChrome,
-           let chrome = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.Chrome") {
-            NSWorkspace.shared.open([url], withApplicationAt: chrome, configuration: NSWorkspace.OpenConfiguration())
-        } else {
-            NSWorkspace.shared.open(url)
-        }
+    /// Sizes the window to whatever the stack actually needs, so showing/hiding the custom
+    /// IMAP fields (or a longer status line) can't clip content.
+    private func resizeToFit() {
+        guard let window, let content = window.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        window.setContentSize(NSSize(width: Self.windowWidth, height: rootStack.fittingSize.height))
     }
 
     private func copyToClipboard(_ s: String) {
@@ -256,12 +303,6 @@ final class AddAccountWindowController: NSWindowController {
     private func setInfo(_ s: String) {
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.stringValue = s
-    }
-
-    private func button(_ title: String, _ action: Selector) -> NSButton {
-        let b = NSButton(title: title, target: self, action: action)
-        b.bezelStyle = .rounded
-        return b
     }
 
     private func wrapped(_ text: String, size: CGFloat, color: NSColor, maxWidth: CGFloat, lines: Int) -> NSTextField {
@@ -358,11 +399,11 @@ final class AddAccountWindowController: NSWindowController {
 
 private extension NSBox {
     /// A thin horizontal divider for stacking sections.
-    static func horizontalSeparator() -> NSBox {
+    static func horizontalSeparator(width: CGFloat) -> NSBox {
         let box = NSBox()
         box.boxType = .separator
         box.translatesAutoresizingMaskIntoConstraints = false
-        box.widthAnchor.constraint(equalToConstant: 430).isActive = true
+        box.widthAnchor.constraint(equalToConstant: width).isActive = true
         return box
     }
 }

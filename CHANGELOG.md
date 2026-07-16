@@ -6,6 +6,27 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **The app's "Create an App Password" assistant is now one copyable prompt.** It used
+  to be a stack of buttons that copied a hidden, Gmail-only prompt and opened a specific
+  vendor (Claude for Chrome / ChatGPT / Claude.ai). Now the prompt is shown in the window
+  — truncated, scrollable, with a **Copy Prompt** button — and you paste it into whatever
+  agent you already use, rather than one we picked for you. It's readable *before* you
+  trust it with a credential.
+
+  The prompt now also does the whole job: it tells the agent to create the App Password
+  **and** register the account via the `add_account` MCP tool, so one paste finishes the
+  setup with nothing to type back. It fills in from the email/provider/hosts in the form
+  and is provider-aware — Gmail, iCloud, Fastmail and custom IMAP each get their own
+  route and preconditions, where previously every prompt said "Gmail". The manual path
+  (**Open <provider>'s page** → paste the code into the field) is unchanged and still the
+  private one: the window notes inline that routing through an agent puts the password in
+  the model's context and the client's logs.
+
+### Fixed
+- The Add Account window sizes itself to its content instead of two hardcoded heights,
+  so showing the custom-IMAP fields or a long error can no longer clip it.
+
 ### Planned
 - OAuth sign-in as an alternative to App Passwords.
 - Microsoft 365 / Outlook provider (needs OAuth — basic-auth IMAP is being retired).

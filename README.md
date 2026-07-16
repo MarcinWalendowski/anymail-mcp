@@ -154,14 +154,18 @@ be added from an agent with the `add_account` MCP tool — though the GUI is the
 private path, since it posts the password straight to the local engine and the model
 never sees it.
 
-The window also has a **"Create an App Password"** assistant so you
-don't have to hunt through Google settings: one button opens Google's App
-Passwords page in your own browser, or you can hand the task to an AI agent — it
-copies a ready-to-run prompt and opens **Claude for Chrome** (runs locally in your
-browser) or **ChatGPT / Claude.ai**. The app never automates Google's page itself;
-the returned 16-character code is pasted back into the field (there's a **Paste**
-button) and verified as usual. Note: cloud agents create the password on a *remote*
-machine — prefer the local options; the window warns you inline.
+**Don't have an App Password?** The window shows one ready-to-run prompt you can copy
+into whatever agent you already use. It tells the agent to create the App Password on
+your provider's page *and* register the account through the `add_account` MCP tool — so
+a single paste finishes the job and there's nothing to type back. The prompt fills
+itself in from the email and provider you've picked, and you can read it before you
+trust it with anything.
+
+The trade-off is stated in the window: going through an agent makes the password a
+tool-call argument, so it passes through the model's context and your MCP client's
+logs. The private path is right next to it — **Open <provider>'s page** takes you
+there yourself, and the 16-character code goes into the field (there's a **Paste**
+button) and never leaves your Mac. The app never automates the provider's page itself.
 
 The source and build steps live in [`app/`](app/BUILD.md). **Today you build it
 yourself** (`xcodegen generate` + Xcode). A signed, notarized download that opens

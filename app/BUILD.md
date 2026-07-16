@@ -3,12 +3,14 @@
 A thin Swift/AppKit menu-bar app over the Node engine in `../`. It:
 
 - supervises the always-on engine (`node dist/index.js --http`),
-- gives you a GUI to **connect Gmail accounts** (posts to the engine's admin API),
+- gives you a GUI to **connect mail accounts** — Gmail, iCloud, Fastmail or a custom
+  IMAP host (posts to the engine's admin API),
 - **Install into Agents** (posts to `/admin/install`),
 - **Start at Login** via `SMAppService`.
 
-All Gmail/Keychain logic stays in the Node engine — the app never sees an App
-Password (it posts it once to `127.0.0.1`, the engine stores it in the Keychain).
+All mail/Keychain logic stays in the Node engine — when you add an account through the
+form, the app never sees the App Password in a way any model can (it posts it once to
+`127.0.0.1`, and the engine stores it in the Keychain).
 
 ## Prerequisites
 
@@ -39,6 +41,35 @@ open "build/Build/Products/Release/AnyMail MCP.app"
 
 On launch a mail icon appears in the menu bar. Use **Add Account…**, then
 **Install into Agents**, then toggle **Start at Login**.
+
+## The Add Account window
+
+Two ways to get an App Password, both under the form:
+
+- **Do it yourself** — opens the provider's page; paste the code into the field. The
+  password goes straight to the local engine → Keychain, so no model ever sees it.
+- **Copy Prompt** — one prompt you paste into any agent. It creates the App Password
+  *and* registers the account with the `add_account` MCP tool, so nothing has to be
+  typed back. The trade is privacy: the password becomes a tool-call argument, so it
+  passes through the model's context and the client's logs. The window says so inline.
+
+The app never automates a provider's page itself.
+
+`AppPasswordPrompt` is deliberately pure and AppKit-free, so the prompt can be checked
+without opening the window:
+
+```bash
+cd app
+cat > /tmp/pp.swift <<'EOF'
+for p in ["gmail", "icloud", "fastmail", "imap"] {
+    print(AppPasswordPrompt.text(provider: p, email: "you@example.com"), "\n")
+}
+EOF
+mv /tmp/pp.swift /tmp/main.swift
+swiftc AnyMailMCP/AppPasswordPrompt.swift /tmp/main.swift -o /tmp/promptcheck && /tmp/promptcheck
+```
+
+(Top-level statements only compile in a file named `main.swift` — hence the `mv`.)
 
 ## Paths
 
