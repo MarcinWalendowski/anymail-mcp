@@ -11,9 +11,23 @@ Gmail, iCloud, Fastmail, or any IMAP host. Every credential stays on your machin
 ![license: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![latest release](https://img.shields.io/github/v/release/MarcinWalendowski/anymail-mcp?include_prereleases&sort=semver&label=release)
 
-![Drag AnyMail MCP to your Applications folder to install](assets/screenshots/dmg-install.png)
+## Why AnyMail MCP exists
+
+Connecting your mail to an AI agent usually means **one account at a time**, a
+single Gmail or a single Microsoft 365 mailbox. But most people live across
+several inboxes: personal, work, a side project, an old address that still gets
+the important stuff. AnyMail MCP removes that limit. Connect every account you
+have, across providers, and your agent can search, triage, draft, send, label,
+and clean up across **all of them** in a single session, while every credential
+stays on your machine.
+
+> **Pre-1.0 release candidate.** It works, but interfaces may still change
+> without notice. Authentication is via **App Passwords**; Microsoft 365 /
+> Outlook and OAuth sign-in are on the [roadmap](#roadmap).
 
 ## Install the app (macOS)
+
+![Drag AnyMail MCP to your Applications folder to install](assets/screenshots/dmg-install.png)
 
 The menu-bar app is the no-terminal path: it supervises the engine, gives you an
 **Add Account** window, an **Install into Agents** button, and **Start at Login**.
@@ -57,52 +71,25 @@ tool-call argument, so the window flags the trade-off inline).
 
 ## Or set up the CLI
 
-For developers and anyone comfortable in a terminal, one line takes a clean
-checkout to a built engine:
+For anyone comfortable in a terminal, one line clones, builds the engine, and
+registers it into every agent it detects:
 
 ```bash
-git clone https://github.com/MarcinWalendowski/anymail-mcp.git && cd anymail-mcp && ./scripts/setup-cli.sh
+git clone https://github.com/MarcinWalendowski/anymail-mcp.git && cd anymail-mcp && ./scripts/setup-cli.sh --install-agents
 ```
 
-Add `--install-agents` to also register the server into every agent it detects.
-On **Windows** (where `setup-cli.sh` is bash), run `npm ci && npm run build`
-instead. Then add accounts:
+Then add your first account:
 
 ```bash
-node dist/index.js add you@gmail.com --name "Personal" --default
-node dist/index.js add work@company.com
-node dist/index.js add archive@gmail.com --read-only   # triage-only: refuses all writes
-node dist/index.js list
-node dist/index.js test you@gmail.com                  # verify IMAP + SMTP
-
-# other providers (folder-based: no labels, no threads, text-only search)
-node dist/index.js add you@icloud.com   --provider icloud
-node dist/index.js add you@fastmail.com --provider fastmail
-node dist/index.js add you@host.tld     --provider imap --imap-host imap.host.tld --smtp-host smtp.host.tld
-
-node dist/index.js install               # register into every agent it can detect
+node dist/index.js add you@gmail.com --default
 ```
 
-Tip: `npm link` once, then the commands are just `anymail-mcp add ...`,
-`anymail-mcp list`, and so on. The CLI and engine run on macOS, Windows, and
-Linux (on Linux, storing credentials needs a running Secret Service such as
-gnome-keyring or KWallet).
+That's the whole setup. `node dist/index.js help` lists everything else: more
+accounts, other providers (iCloud, Fastmail, any IMAP host), read-only accounts,
+and `test` / `list`. On **Windows**, run `npm ci && npm run build` in place of
+the setup script; the engine runs on macOS, Windows, and Linux.
 
 ---
-
-## Why AnyMail MCP exists
-
-Connecting your mail to an AI agent usually means **one account at a time**, a
-single Gmail or a single Microsoft 365 mailbox. But most people live across
-several inboxes: personal, work, a side project, an old address that still gets
-the important stuff. AnyMail MCP removes that limit. Connect every account you
-have, across providers, and your agent can search, triage, draft, send, label,
-and clean up across **all of them** in a single session, while every credential
-stays on your machine.
-
-> **Pre-1.0 release candidate.** It works, but interfaces may still change
-> without notice. Authentication is via **App Passwords**; Microsoft 365 /
-> Outlook and OAuth sign-in are on the [roadmap](#roadmap).
 
 ## What it can do
 
