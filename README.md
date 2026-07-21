@@ -89,6 +89,23 @@ accounts, other providers (iCloud, Fastmail, any IMAP host), read-only accounts,
 and `test` / `list`. On **Windows**, run `npm ci && npm run build` in place of
 the setup script; the engine runs on macOS, Windows, and Linux.
 
+## Or paste a prompt to your agent
+
+Your agent already has a terminal, so it can run the setup itself. Paste this
+into Claude Code, Cursor, or any coding agent:
+
+```text
+Install the AnyMail MCP email server for me. Clone
+https://github.com/MarcinWalendowski/anymail-mcp, then from the repo root run
+./scripts/setup-cli.sh --install-agents to build the engine and register it
+into my agents. Confirm it worked with node dist/index.js help, then tell me
+how to add my first mail account.
+```
+
+Restart the agent when it's done, then connect a mailbox via the [App
+Password](#get-an-app-password) flow, or just ask the agent to walk you through
+it.
+
 ---
 
 ## What it can do
